@@ -1,0 +1,115 @@
+{
+  "filingDeadlines": [
+    {
+      "requirementType": "article_320_emissions_report",
+      "dueDate": "2026-05-01"
+    },
+    {
+      "requirementType": "article_321_performance_report",
+      "dueDate": "2026-05-01"
+    }
+  ],
+  "penalties": {
+    "lateReportPenaltyPerSqFtPerMonth": 0.5,
+    "emissionsOverLimitPenaltyPerTco2e": 268
+  },
+  "coverageConfidence": {
+    "matchedBbl": 0.98,
+    "matchedBin": 0.92,
+    "matchedAddress": 0.78,
+    "ownerImported": 0.55,
+    "conflictPenalty": 0.18
+  },
+  "emissionsEstimates": {
+    "article320": {
+      "estimatedActualTco2ePerSqFt": 0.00115,
+      "estimatedLimitTco2ePerSqFt": 0.00093
+    }
+  },
+  "requirementTemplates": {
+    "article320": [
+      {
+        "type": "coverage_verification",
+        "status": "complete",
+        "requiredRole": "owner",
+        "dueDateRef": "article_320_emissions_report"
+      },
+      {
+        "type": "pathway_verification",
+        "status": "in_progress",
+        "requiredRole": "owner",
+        "dueDateRef": "article_320_emissions_report",
+        "blockingReason": "Confirm public-source pathway mapping and owner-provided profile data."
+      },
+      {
+        "type": "article_320_emissions_report",
+        "status": "in_progress",
+        "requiredRole": "rdp",
+        "dueDateRef": "article_320_emissions_report"
+      },
+      {
+        "type": "attestation_rdp",
+        "status": "blocked",
+        "requiredRole": "rdp",
+        "dueDateRef": "article_320_emissions_report",
+        "blockingReason": "Awaiting reviewed utility and GFA package."
+      }
+    ],
+    "article321Prescriptive": [
+      {
+        "type": "coverage_verification",
+        "status": "complete",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report"
+      },
+      {
+        "type": "pathway_verification",
+        "status": "in_progress",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report",
+        "blockingReason": "Confirm Article 321 prescriptive pathway and PECM applicability."
+      },
+      {
+        "type": "article_321_prescriptive_report",
+        "status": "in_progress",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report"
+      },
+      {
+        "type": "attestation_rcxa",
+        "status": "blocked",
+        "requiredRole": "rcxa",
+        "dueDateRef": "article_321_performance_report",
+        "blockingReason": "Awaiting PECM evidence package and RCxA sign-off."
+      }
+    ],
+    "article321Performance": [
+      {
+        "type": "coverage_verification",
+        "status": "complete",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report"
+      },
+      {
+        "type": "pathway_verification",
+        "status": "in_progress",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report",
+        "blockingReason": "Confirm ESPM-backed Article 321 performance pathway inputs."
+      },
+      {
+        "type": "article_321_performance_report",
+        "status": "in_progress",
+        "requiredRole": "owner",
+        "dueDateRef": "article_321_performance_report"
+      },
+      {
+        "type": "attestation_rdp",
+        "status": "blocked",
+        "requiredRole": "rdp",
+        "dueDateRef": "article_321_performance_report",
+        "blockingReason": "Awaiting ESPM export, offsets package, and RDP review."
+      }
+    ]
+  }
+}

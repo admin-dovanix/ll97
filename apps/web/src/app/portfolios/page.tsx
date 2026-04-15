@@ -1,128 +1,100 @@
-import Link from "next/link";
-import { Panel } from "@airwise/ui";
-import { PageShell } from "../../components/page-shell";
-import { createPortfolioAction, importBuildingAction } from "../actions";
-import { listPortfolioWorkspaces } from "../../lib/server-data";
+import { AppShell } from "../../components/layout/app-shell";
+import { PageHeader } from "../../components/layout/page-header";
+import { KPIStrip } from "../../components/data-display/kpi-strip";
+import { PortfolioWorkspace } from "../../components/portfolios/portfolio-workspace";
+import { StatusBadge } from "../../components/ui/status-badge";
+import { requireAuthenticatedSession } from "../../lib/auth";
+import {
+  getBuildingComplianceWorkspace,
+  getBuildingMonitoringWorkspace,
+  listPortfolioWorkspaces
+} from "../../lib/server-data";
+import { buildingComplianceStatus } from "../../lib/status";
+import { formatCurrency, formatPercent } from "../../lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortfoliosPage() {
+  const session = await requireAuthenticatedSession();
   const portfolios = await listPortfolioWorkspaces();
+  const buildings = portfolios.flatMap((portfolio) =>
+    portfolio.buildings.map((building) => ({
+      building,
+      portfolio
+    }))
+  );
+  const buildingSummaries = await Promise.all(
+    buildings.map(async ({ building, portfolio }) => {
+      const [compliance, monitoring] = await Promise.all([
+        getBuildingComplianceWorkspace(building.id).catch(() => null),
+        getBuildingMonitoringWorkspace(building.id).catch(() => null)
+      ]);
+      const penalty =
+        (compliance?.estimatedLateReportPenalty ?? 0) + (compliance?.estimatedEmissionsOverLimitPenalty ?? 0);
+      const status = buildingComplianceStatus({
+        blockerCount: compliance?.blockerCount,
+        evidenceGapCount: compliance?.evidenceGapCount,
+        penalty
+      });
+
+      return {
+        id: building.id,
+        portfolioId: portfolio.id,
+        buildingName: building.name,
+        portfolioName: portfolio.name,
+        address: `${building.addressLine1}, ${building.city}, ${building.state}`,
+        status,
+        pathway: building.pathway,
+        article: building.article,
+        emissionsSignal:
+          (compliance?.estimatedEmissionsOverLimitPenalty ?? 0) > 0 ? "Above limit estimate" : "Within current estimate",
+        penalty,
+        openIssues: monitoring?.issues.filter((issue) => issue.status !== "resolved").length ?? 0,
+        actionLabel:
+          status === "non-compliant" ? "Open compliance" : monitoring?.issues.length ? "Review monitoring" : "Open building",
+        blockerCount: compliance?.blockerCount ?? 0,
+        evidenceGapCount: compliance?.evidenceGapCount ?? 0,
+        topIssues: (monitoring?.issues ?? []).slice(0, 3).map((issue) => issue.summary),
+        recommendedActions: Array.from(
+          new Set((monitoring?.issues ?? []).map((issue) => issue.recommendedAction).filter(Boolean))
+        ) as string[]
+      };
+    })
+  );
+
+  const totalPenalty = buildingSummaries.reduce((sum, building) => sum + building.penalty, 0);
+  const nonCompliant = buildingSummaries.filter((building) => building.status === "non-compliant").length;
+  const atRisk = buildingSummaries.filter((building) => building.status === "at-risk").length;
+  const compliantCount = buildingSummaries.filter((building) => building.status === "compliant").length;
+  const complianceRate = buildingSummaries.length ? (compliantCount / buildingSummaries.length) * 100 : 0;
 
   return (
-    <PageShell eyebrow="Portfolio" title="Pilot portfolio workspace">
-      <div className="grid two">
-        <Panel title="Create portfolio">
-          <form action={createPortfolioAction} style={{ display: "grid", gap: 10 }}>
-            <input name="name" placeholder="Portfolio name" required />
-            <input name="ownerName" placeholder="Owner / operator" />
-            <button type="submit">Create portfolio</button>
-          </form>
-        </Panel>
-
-        <Panel title="Operating note">
-          <p className="muted">
-            Import a building, resolve its pathway, generate LL97 requirements, and move one ventilation system into
-            the read-first monitoring flow.
-          </p>
-        </Panel>
-      </div>
-
-      <div className="grid">
-        {portfolios.length === 0 ? (
-          <Panel title="No portfolios yet">
-            <p className="muted">Create the first portfolio above to start the pilot workspace.</p>
-          </Panel>
-        ) : null}
-
-        {portfolios.map((portfolio) => (
-          <section key={portfolio.id} className="grid" style={{ gap: 16 }}>
-            <div className="grid two">
-              <Panel title={portfolio.name}>
-                <p className="muted">
-                  NYC-first portfolio view for ranking LL97 exposure, missing evidence, and ventilation pilot scope.
-                </p>
-                <ul className="list">
-                  <li>Buildings: {portfolio.buildingCount}</li>
-                  <li>Pathway focus: {portfolio.primaryPathwayLabel}</li>
-                  <li>Portfolio status: {portfolio.status}</li>
-                </ul>
-              </Panel>
-
-              <Panel title="Pilot actions">
-                <ul className="list">
-                  <li>Resolve pathway and evidence gaps.</li>
-                  <li>Attach owner and consultant documents to requirements.</li>
-                  <li>Move one ventilation system from read-only to recommendations.</li>
-                </ul>
-              </Panel>
-            </div>
-
-            <Panel title="Buildings">
-              <div className="grid">
-                {portfolio.buildings.map((building) => (
-                  <div
-                    key={building.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: 16,
-                      border: "1px solid rgba(22, 50, 39, 0.12)",
-                      borderRadius: 16,
-                      background: "rgba(255, 255, 255, 0.72)"
-                    }}
-                  >
-                    <div>
-                      <strong>{building.name}</strong>
-                      <p className="muted" style={{ marginBottom: 0 }}>
-                        {building.addressLine1}, {building.city} {building.state}
-                      </p>
-                    </div>
-                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                      <span>{building.article}</span>
-                      <span>{building.pathway}</span>
-                      <Link href={`/buildings/${building.id}/overview`}>Open building</Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <form action={importBuildingAction} style={{ display: "grid", gap: 10, marginTop: 20 }}>
-                <strong>Import one building into this portfolio</strong>
-                <input type="hidden" name="portfolioId" value={portfolio.id} />
-                <input name="name" placeholder="Building name" required />
-                <input name="addressLine1" placeholder="Address line 1" required />
-                <div className="grid two">
-                  <input name="city" placeholder="City" defaultValue="New York" />
-                  <input name="state" placeholder="State" defaultValue="NY" />
-                </div>
-                <div className="grid two">
-                  <input name="zip" placeholder="ZIP" />
-                  <input name="bbl" placeholder="BBL" />
-                </div>
-                <div className="grid two">
-                  <input name="bin" placeholder="BIN" />
-                  <select name="article" defaultValue="">
-                    <option value="">Article</option>
-                    <option value="320">320</option>
-                    <option value="321">321</option>
-                  </select>
-                </div>
-                <select name="pathway" defaultValue="">
-                  <option value="">Pathway</option>
-                  <option value="CP0">CP0</option>
-                  <option value="CP1">CP1</option>
-                  <option value="CP2">CP2</option>
-                  <option value="CP3">CP3</option>
-                  <option value="CP4">CP4</option>
-                </select>
-                <button type="submit">Import building</button>
-              </form>
-            </Panel>
-          </section>
-        ))}
-      </div>
-    </PageShell>
+    <AppShell
+      currentPortfolioId={session.memberships.find((membership) => membership.id === session.activeMembershipId)?.portfolioId}
+      header={
+        <PageHeader
+          description="Decision-first portfolio oversight for LL97 compliance, monitored HVAC risk, and supervised building operations."
+          eyebrow="Portfolios"
+          status={<StatusBadge label={`${portfolios.length} portfolios`} tone="accent" />}
+          title="Portfolio dashboard"
+        />
+      }
+      kpis={
+        <KPIStrip
+          items={[
+            { label: "Total penalty exposure", value: formatCurrency(totalPenalty), emphasize: true },
+            { label: "Buildings non-compliant", value: nonCompliant.toString() },
+            { label: "Buildings at risk", value: atRisk.toString() },
+            { label: "Compliance rate", value: formatPercent(complianceRate) }
+          ]}
+        />
+      }
+    >
+      <PortfolioWorkspace
+        canEdit={session.activeRole === "owner"}
+        portfolios={portfolios.map((portfolio) => ({ id: portfolio.id, name: portfolio.name }))}
+        rows={buildingSummaries}
+      />
+    </AppShell>
   );
 }

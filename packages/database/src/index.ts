@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +30,12 @@ export const initialMigrations = [
   "0002_audit_events.sql",
   "0003_recommendation_actions.sql",
   "0004_public_building_records.sql",
-  "0005_command_lifecycle.sql"
+  "0005_command_lifecycle.sql",
+  "0006_public_import_runs.sql",
+  "0007_auth_sessions.sql",
+  "0008_bacnet_gateways.sql",
+  "0009_gateway_runtime.sql",
+  "0010_gateway_runtime_health.sql"
 ] as const;
 
 export const seedFiles = ["ll97-config.json"] as const;
@@ -147,12 +153,14 @@ function seedInitialData(db: DatabaseSync) {
 
   db.prepare(
     `INSERT INTO public_building_records (
-      id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      id, dataset_name, source_version, source_record_key, normalized_address_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     "pub_001",
     "dob_covered_buildings",
     "2026",
+    "3001230042|3332221|215 PROSPECT PLACE|BROOKLYN|NY|11238",
+    "215 PROSPECT PLACE|BROOKLYN|NY|11238",
     "215 Prospect Place",
     "Brooklyn",
     "NY",
@@ -307,12 +315,14 @@ function reconcileSeedData(db: DatabaseSync) {
   if (!samplePublicRecord) {
     db.prepare(
       `INSERT INTO public_building_records (
-        id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        id, dataset_name, source_version, source_record_key, normalized_address_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       "pub_001",
       "dob_covered_buildings",
       "2026",
+      "3001230042|3332221|215 PROSPECT PLACE|BROOKLYN|NY|11238",
+      "215 PROSPECT PLACE|BROOKLYN|NY|11238",
       "215 Prospect Place",
       "Brooklyn",
       "NY",
@@ -325,6 +335,77 @@ function reconcileSeedData(db: DatabaseSync) {
       128000,
       JSON.stringify({ source: "seed", notes: "Sample public-source candidate for demo matching." })
     );
+  } else {
+    db.prepare(
+      `UPDATE public_building_records
+       SET source_record_key = COALESCE(source_record_key, ?),
+           normalized_address_key = COALESCE(normalized_address_key, ?)
+       WHERE id = ?`
+    ).run(
+      "3001230042|3332221|215 PROSPECT PLACE|BROOKLYN|NY|11238",
+      "215 PROSPECT PLACE|BROOKLYN|NY|11238",
+      "pub_001"
+    );
+  }
+
+  const seededUsers = [
+    {
+      userId: "user_owner_001",
+      membershipId: "membership_owner_001",
+      name: "Maya Owner",
+      email: "owner@airwise.local",
+      role: "owner"
+    },
+    {
+      userId: "user_operator_001",
+      membershipId: "membership_operator_001",
+      name: "Owen Operator",
+      email: "operator@airwise.local",
+      role: "operator"
+    },
+    {
+      userId: "user_rdp_001",
+      membershipId: "membership_rdp_001",
+      name: "Riley RDP",
+      email: "rdp@airwise.local",
+      role: "rdp"
+    },
+    {
+      userId: "user_rcxa_001",
+      membershipId: "membership_rcxa_001",
+      name: "Casey RCxA",
+      email: "rcxa@airwise.local",
+      role: "rcxa"
+    }
+  ] as const satisfies Array<{
+    userId: string;
+    membershipId: string;
+    name: string;
+    email: string;
+    role: AppUserRole;
+  }>;
+
+  const upsertUser = db.prepare(
+    `INSERT INTO app_users (id, name, email, status)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       email = excluded.email,
+       status = excluded.status`
+  );
+  const upsertMembership = db.prepare(
+    `INSERT INTO user_portfolio_memberships (id, user_id, portfolio_id, role, status)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       user_id = excluded.user_id,
+       portfolio_id = excluded.portfolio_id,
+       role = excluded.role,
+       status = excluded.status`
+  );
+
+  for (const user of seededUsers) {
+    upsertUser.run(user.userId, user.name, user.email, "active");
+    upsertMembership.run(user.membershipId, user.userId, "pf_001", user.role, "active");
   }
 }
 
@@ -461,7 +542,11 @@ export type DiscoveryRunRecord = {
   buildingId: string;
   assetId: string;
   pointId: string;
-  status: "queued" | "existing";
+  gatewayId?: string;
+  assetCount?: number;
+  pointCount?: number;
+  telemetryEventCount?: number;
+  status: "queued" | "existing" | "completed" | "failed";
 };
 
 export type AppWorkspace = {
@@ -497,6 +582,7 @@ export type PublicBuildingRecord = {
   id: string;
   datasetName: string;
   sourceVersion?: string;
+  sourceRecordKey?: string;
   addressLine1: string;
   city?: string;
   state?: string;
@@ -507,6 +593,21 @@ export type PublicBuildingRecord = {
   compliancePathway?: string;
   article?: string;
   grossSquareFeet?: number;
+};
+
+export type PublicImportRunRecord = {
+  id: string;
+  datasetName: string;
+  sourceVersion?: string;
+  sourceFile?: string;
+  rowCount: number;
+  insertedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  status: string;
+  startedAt: string;
+  completedAt?: string;
+  summaryJson?: string;
 };
 
 export type PublicBuildingMatchRecord = {
@@ -523,6 +624,40 @@ export type PublicSourceWorkspace = {
   matches: PublicBuildingMatchRecord[];
 };
 
+export const appUserRoles = ["owner", "operator", "rdp", "rcxa"] as const;
+
+export type AppUserRole = (typeof appUserRoles)[number];
+
+export type AppUserRecord = {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+};
+
+export type PortfolioMembershipRecord = {
+  id: string;
+  userId: string;
+  portfolioId: string;
+  portfolioName: string;
+  role: AppUserRole;
+  status: string;
+};
+
+export type AppSessionRecord = {
+  id: string;
+  user: AppUserRecord;
+  memberships: PortfolioMembershipRecord[];
+  activeMembershipId?: string;
+  activePortfolioId?: string;
+  activePortfolioName?: string;
+  activeRole?: AppUserRole;
+  status: string;
+  createdAt: string;
+  lastSeenAt?: string;
+  expiresAt?: string;
+};
+
 export type TelemetryEventRecord = {
   id: string;
   buildingId: string;
@@ -535,15 +670,391 @@ export type TelemetryEventRecord = {
   qualityFlag?: string;
 };
 
+export type BacnetGatewayRecord = {
+  id: string;
+  buildingId: string;
+  name: string;
+  protocol: string;
+  vendor?: string;
+  host?: string;
+  port?: number;
+  status: string;
+  authType?: string;
+  ingestToken?: string;
+  runtimeMode?: string;
+  commandEndpoint?: string;
+  metadataJson?: string;
+  agentVersion?: string;
+  heartbeatStatus?: string;
+  pollIntervalSeconds?: number;
+  lastHeartbeatAt?: string;
+  lastPollRequestedAt?: string;
+  lastPollCompletedAt?: string;
+  nextPollDueAt?: string;
+  runtimeMetadataJson?: string;
+  lastSeenAt?: string;
+  lastDiscoveryAt?: string;
+  createdAt: string;
+};
+
+export type GatewayCommandDispatchRecord = {
+  id: string;
+  gatewayId: string;
+  commandId: string;
+  buildingId: string;
+  pointId: string;
+  status: string;
+  payloadJson: string;
+  responseJson?: string;
+  errorMessage?: string;
+  createdAt: string;
+  dispatchedAt?: string;
+  acknowledgedAt?: string;
+  deliveryAttemptCount: number;
+  lastDeliveryAttemptAt?: string;
+};
+
+export type MonitoringAssetRecord = {
+  id: string;
+  buildingId: string;
+  systemName: string;
+  assetType: string;
+  protocol: string;
+  vendor?: string;
+  location?: string;
+  status: string;
+  sourceGatewayId?: string;
+  sourceAssetKey?: string;
+};
+
 export type MonitoringWorkspace = {
+  gateways: BacnetGatewayRecord[];
+  assets: MonitoringAssetRecord[];
   issues: MonitoringIssue[];
   basPoints: BasPointRecord[];
   telemetryEvents: TelemetryEventRecord[];
   recommendationActions: RecommendationAction[];
+  discoveryRuns: DiscoveryRunRecord[];
+  dispatches: GatewayCommandDispatchRecord[];
 };
 
 function makeId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function makeSecretToken(prefix: string) {
+  return `${prefix}_${randomBytes(12).toString("hex")}`;
+}
+
+function addSecondsToIso(timestamp: string, seconds: number) {
+  return new Date(Date.parse(timestamp) + seconds * 1000).toISOString();
+}
+
+function normalizePollIntervalSeconds(value?: number) {
+  if (!value || !Number.isFinite(value)) {
+    return 300;
+  }
+
+  return Math.max(30, Math.round(value));
+}
+
+function normalizeGatewayBridgeBackend(value?: string | null) {
+  return value === "simulated" || value === "file-feed" || value === "bacnet-sdk" ? value : "bacnet-sdk";
+}
+
+function getGatewayMetadata(gateway: Pick<BacnetGatewayRecord, "metadataJson">) {
+  return parseJsonObject(gateway.metadataJson);
+}
+
+function getGatewayDispatchPolicy(gateway: Pick<BacnetGatewayRecord, "metadataJson">) {
+  const metadata = getGatewayMetadata(gateway);
+  const dispatchPolicy =
+    metadata.dispatchPolicy && typeof metadata.dispatchPolicy === "object"
+      ? (metadata.dispatchPolicy as Record<string, unknown>)
+      : {};
+  const timeoutSeconds = Number(dispatchPolicy.timeoutSeconds);
+  const maxAttempts = Number(dispatchPolicy.maxAttempts);
+
+  return {
+    timeoutSeconds: Number.isFinite(timeoutSeconds) ? Math.max(30, Math.round(timeoutSeconds)) : 180,
+    maxAttempts: Number.isFinite(maxAttempts) ? Math.max(1, Math.round(maxAttempts)) : 3
+  };
+}
+
+function parseGatewaySdkConfig(value?: string | null) {
+  if (!value?.trim()) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function collectGatewaySdkPoints(config: Record<string, unknown>) {
+  const topLevelPoints = Array.isArray(config.points) ? (config.points as Array<Record<string, unknown>>) : [];
+  const assetPoints = Array.isArray(config.assets)
+    ? (config.assets as Array<Record<string, unknown>>).flatMap((asset) =>
+        Array.isArray(asset.points) ? (asset.points as Array<Record<string, unknown>>) : []
+      )
+    : [];
+
+  return [...topLevelPoints, ...assetPoints];
+}
+
+function validateGatewayConfigurationInput(input: {
+  bridgeBackend?: string;
+  sdkModulePath?: string;
+  sdkExportName?: string;
+  sdkConfigJson?: string;
+}) {
+  const bridgeBackend = normalizeGatewayBridgeBackend(input.bridgeBackend);
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  const sdkConfig = parseGatewaySdkConfig(input.sdkConfigJson);
+  const points = sdkConfig ? collectGatewaySdkPoints(sdkConfig) : [];
+  const writablePointCount = points.filter((point) => point.isWritable === true).length;
+  const whitelistedPointCount = points.filter((point) => point.isWhitelisted === true).length;
+  const occupancyLikePointCount = points.filter((point) => {
+    const type = typeof point.canonicalPointType === "string" ? point.canonicalPointType : "";
+    return type === "occupancy_mode" || type === "schedule";
+  }).length;
+  const occupancyEnumMapCount = points.filter((point) => {
+    const type = typeof point.canonicalPointType === "string" ? point.canonicalPointType : "";
+    return (
+      (type === "occupancy_mode" || type === "schedule") &&
+      point.enumMap &&
+      typeof point.enumMap === "object" &&
+      Object.keys(point.enumMap as Record<string, unknown>).length > 0
+    );
+  }).length;
+
+  if (bridgeBackend === "bacnet-sdk") {
+    if (!input.sdkModulePath?.trim()) {
+      issues.push("SDK module path is required for the bacnet-sdk bridge backend.");
+    }
+
+    if (!input.sdkConfigJson?.trim()) {
+      issues.push("SDK config JSON is required for the bacnet-sdk bridge backend.");
+    } else if (!sdkConfig) {
+      issues.push("SDK config JSON could not be parsed into an object.");
+    } else {
+      if (typeof sdkConfig.targetAddress !== "string" || sdkConfig.targetAddress.trim().length === 0) {
+        issues.push("targetAddress is required in SDK config JSON.");
+      }
+
+      if (points.length === 0) {
+        issues.push("At least one configured point is required in SDK config JSON.");
+      }
+
+      if (typeof sdkConfig.skipWhoIs !== "boolean" && typeof sdkConfig.deviceInstance !== "number") {
+        warnings.push("Set deviceInstance or skipWhoIs so discovery behavior is explicit before live rollout.");
+      }
+    }
+  }
+
+  if (points.length > 0 && writablePointCount === 0) {
+    warnings.push("No writable points are configured yet; supervised command testing will stay read-only.");
+  }
+
+  if (writablePointCount > 0 && whitelistedPointCount === 0) {
+    warnings.push("Writable points are configured but none are explicitly whitelisted for supervised commands.");
+  }
+
+  if (occupancyLikePointCount > 0 && occupancyEnumMapCount < occupancyLikePointCount) {
+    warnings.push("Some occupancy or schedule points are missing enumMap values, so replayed states may stay numeric.");
+  }
+
+  return {
+    bridgeBackend,
+    sdkConfig,
+    pointCount: points.length,
+    writablePointCount,
+    whitelistedPointCount,
+    status: issues.length > 0 ? "invalid" : warnings.length > 0 ? "warning" : "valid",
+    issues,
+    warnings,
+    validatedAt: new Date().toISOString()
+  };
+}
+
+type GatewayReplayScenario =
+  | "high_co2_low_ventilation"
+  | "after_hours_runtime"
+  | "schedule_mismatch"
+  | "stale_override"
+  | "sensor_fault";
+
+function normalizeReplayScenario(value?: string | null): GatewayReplayScenario {
+  switch (value) {
+    case "after_hours_runtime":
+    case "schedule_mismatch":
+    case "stale_override":
+    case "sensor_fault":
+      return value;
+    default:
+      return "high_co2_low_ventilation";
+  }
+}
+
+function defaultReplayObservedAt(scenario: GatewayReplayScenario) {
+  switch (scenario) {
+    case "after_hours_runtime":
+      return "2026-04-15T23:30:00Z";
+    case "stale_override":
+      return "2026-04-15T14:00:00Z";
+    default:
+      return "2026-04-15T13:30:00Z";
+  }
+}
+
+function buildReplaySnapshot(observedAt: string) {
+  return {
+    observedAt,
+    assets: [
+      {
+        assetKey: "corridor_ahu",
+        systemName: "Corridor AHU",
+        assetType: "ahu",
+        protocol: "BACnet/IP",
+        vendor: "AirWise Replay",
+        location: "Roof",
+        status: "active",
+        points: [
+          {
+            pointKey: "corridor_schedule",
+            objectIdentifier: "schedule,11",
+            objectName: "Corridor AHU Schedule",
+            canonicalPointType: "schedule",
+            unit: "enum",
+            isWritable: true,
+            isWhitelisted: true,
+            presentValue: "occupied"
+          },
+          {
+            pointKey: "corridor_occupancy_mode",
+            objectIdentifier: "multi-state-value,9",
+            objectName: "Corridor Occupancy Mode",
+            canonicalPointType: "occupancy_mode",
+            unit: "enum",
+            isWritable: true,
+            isWhitelisted: true,
+            presentValue: "occupied"
+          },
+          {
+            pointKey: "corridor_manual_override",
+            objectIdentifier: "binary-value,14",
+            objectName: "Corridor Manual Override",
+            canonicalPointType: "manual_override",
+            unit: "binary",
+            isWritable: true,
+            isWhitelisted: true,
+            presentValue: "auto"
+          },
+          {
+            pointKey: "corridor_fan_status",
+            objectIdentifier: "binary-input,5",
+            objectName: "Corridor Fan Status",
+            canonicalPointType: "fan_status",
+            unit: "binary",
+            presentValue: "on"
+          },
+          {
+            pointKey: "corridor_co2",
+            objectIdentifier: "analog-input,18",
+            objectName: "Corridor CO2",
+            canonicalPointType: "co2",
+            unit: "ppm",
+            presentValue: 760
+          },
+          {
+            pointKey: "corridor_temperature",
+            objectIdentifier: "analog-input,19",
+            objectName: "Corridor Temperature",
+            canonicalPointType: "temperature",
+            unit: "F",
+            presentValue: 70
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function buildReplayScenarioEvents(scenario: GatewayReplayScenario, observedAt: string) {
+  const baseAt = Date.parse(observedAt);
+  const at = (offsetMinutes: number) => new Date(baseAt + offsetMinutes * 60 * 1000).toISOString();
+
+  switch (scenario) {
+    case "after_hours_runtime":
+      return [
+        {
+          observedAt,
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_fan_status", objectIdentifier: "binary-input,5", value: "on", unit: "binary", qualityFlag: "ok" }
+          ]
+        }
+      ];
+    case "schedule_mismatch":
+      return [
+        {
+          observedAt: at(-15),
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_schedule", objectIdentifier: "schedule,11", value: "unoccupied", unit: "enum", qualityFlag: "ok" },
+            { assetKey: "corridor_ahu", pointKey: "corridor_occupancy_mode", objectIdentifier: "multi-state-value,9", value: "unoccupied", unit: "enum", qualityFlag: "ok" }
+          ]
+        },
+        {
+          observedAt,
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_fan_status", objectIdentifier: "binary-input,5", value: "on", unit: "binary", qualityFlag: "ok" }
+          ]
+        }
+      ];
+    case "stale_override":
+      return [
+        {
+          observedAt: at(-180),
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_manual_override", objectIdentifier: "binary-value,14", value: "override", unit: "binary", qualityFlag: "ok" }
+          ]
+        },
+        {
+          observedAt,
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_fan_status", objectIdentifier: "binary-input,5", value: "on", unit: "binary", qualityFlag: "ok" }
+          ]
+        }
+      ];
+    case "sensor_fault":
+      return [
+        {
+          observedAt,
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_co2", objectIdentifier: "analog-input,18", value: 0, unit: "ppm", qualityFlag: "fault" }
+          ]
+        }
+      ];
+    case "high_co2_low_ventilation":
+    default:
+      return [
+        {
+          observedAt: at(-10),
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_fan_status", objectIdentifier: "binary-input,5", value: "off", unit: "binary", qualityFlag: "ok" }
+          ]
+        },
+        {
+          observedAt,
+          events: [
+            { assetKey: "corridor_ahu", pointKey: "corridor_co2", objectIdentifier: "analog-input,18", value: 1125, unit: "ppm", qualityFlag: "ok" }
+          ]
+        }
+      ];
+  }
 }
 
 function recordAuditEvent(input: {
@@ -599,6 +1110,158 @@ function normalizeCompliancePathway(pathway?: string | null): CompliancePathway 
 
 function normalizeArticle(article?: string | null): Building["article"] {
   return article === "320" || article === "321" ? article : "UNKNOWN";
+}
+
+function normalizeDigits(value?: string | null) {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.replaceAll(/\D/g, "");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function normalizeTextToken(value?: string | null) {
+  return value
+    ?.toUpperCase()
+    .replaceAll(/[^A-Z0-9 ]/g, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeAddressKey(input: {
+  addressLine1?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+}) {
+  const address = normalizeTextToken(input.addressLine1);
+  const city = normalizeTextToken(input.city);
+  const state = normalizeTextToken(input.state);
+  const zip = normalizeDigits(input.zip);
+
+  return [address, city, state, zip].filter((part) => part && part.length > 0).join("|") || undefined;
+}
+
+function normalizeSourceKey(value?: string | null) {
+  const normalized = value
+    ?.trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9:_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  return normalized && normalized.length > 0 ? normalized : undefined;
+}
+
+function inferCanonicalPointType(input: {
+  objectName?: string | null;
+  objectIdentifier?: string | null;
+  unit?: string | null;
+}): MonitoringPointType | undefined {
+  const haystack = `${input.objectName ?? ""} ${input.objectIdentifier ?? ""} ${input.unit ?? ""}`.toLowerCase();
+
+  if (haystack.includes("schedule")) {
+    return "schedule";
+  }
+  if (haystack.includes("occup")) {
+    return "occupancy_mode";
+  }
+  if (haystack.includes("co2")) {
+    return "co2";
+  }
+  if (haystack.includes("humid")) {
+    return "humidity";
+  }
+  if (haystack.includes("temp")) {
+    return "temperature";
+  }
+  if (haystack.includes("damper")) {
+    return "damper_position";
+  }
+  if (haystack.includes("airflow") || haystack.includes("cfm") || haystack.includes("flow")) {
+    return "airflow_proxy";
+  }
+  if (haystack.includes("alarm")) {
+    return "alarm";
+  }
+  if (haystack.includes("override")) {
+    return "manual_override";
+  }
+  if (haystack.includes("fan") && (haystack.includes("status") || haystack.includes("proof") || haystack.includes("run"))) {
+    return "fan_status";
+  }
+  if (haystack.includes("fan") && (haystack.includes("command") || haystack.includes("enable") || haystack.includes("start"))) {
+    return "fan_command";
+  }
+
+  return undefined;
+}
+
+function inferSafetyCategory(input: {
+  objectName?: string | null;
+  canonicalPointType?: MonitoringPointType;
+  safetyCategory?: string | null;
+}) {
+  if (input.safetyCategory && input.safetyCategory.trim().length > 0) {
+    return input.safetyCategory.trim();
+  }
+
+  const haystack = (input.objectName ?? "").toLowerCase();
+  if (haystack.includes("fire") || haystack.includes("smoke") || haystack.includes("life safety")) {
+    return "life_safety";
+  }
+
+  if (
+    input.canonicalPointType === "co2" ||
+    input.canonicalPointType === "temperature" ||
+    input.canonicalPointType === "humidity" ||
+    input.canonicalPointType === "airflow_proxy"
+  ) {
+    return "sensor";
+  }
+
+  if (input.canonicalPointType === "alarm") {
+    return "alarm";
+  }
+
+  return "operational";
+}
+
+function normalizeCoveredStatusValue(value?: string | null) {
+  const normalized = value?.trim().toLowerCase();
+
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (["covered", "yes", "y", "true", "1"].includes(normalized)) {
+    return "covered";
+  }
+
+  if (["not covered", "not_covered", "no", "n", "false", "0"].includes(normalized)) {
+    return "not_covered";
+  }
+
+  return normalized;
+}
+
+function normalizePublicPathwayValue(value?: string | null) {
+  const normalized = normalizeCompliancePathway(value);
+  return normalized === "UNKNOWN" ? undefined : normalized;
+}
+
+function normalizePublicArticleValue(article?: string | null, pathway?: CompliancePathway) {
+  const normalizedArticle = normalizeArticle(article);
+  if (normalizedArticle !== "UNKNOWN") {
+    return normalizedArticle;
+  }
+
+  if (pathway && pathway !== "UNKNOWN") {
+    return pathwayMetadata[pathway].article;
+  }
+
+  return undefined;
 }
 
 function getDeadlineForRequirement(config: SeedConfig, requirementType: string) {
@@ -801,6 +1464,888 @@ export function listPortfolios(): PortfolioSummary[] {
     });
 }
 
+function mapPortfolioMembershipRows(userId: string): PortfolioMembershipRecord[] {
+  const db = getDatabase();
+
+  return db
+    .prepare(
+      `SELECT upm.id, upm.user_id, upm.portfolio_id, p.name AS portfolio_name, upm.role, upm.status
+       FROM user_portfolio_memberships upm
+       INNER JOIN portfolios p ON p.id = upm.portfolio_id
+       WHERE upm.user_id = ? AND upm.status = 'active'
+       ORDER BY p.name ASC, upm.role ASC`
+    )
+    .all(userId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        user_id: string;
+        portfolio_id: string;
+        portfolio_name: string;
+        role: string;
+        status: string;
+      };
+
+      return {
+        id: typedRow.id,
+        userId: typedRow.user_id,
+        portfolioId: typedRow.portfolio_id,
+        portfolioName: typedRow.portfolio_name,
+        role: appUserRoles.includes(typedRow.role as AppUserRole) ? (typedRow.role as AppUserRole) : "owner",
+        status: typedRow.status
+      };
+    });
+}
+
+function buildSessionRecord(
+  sessionRow:
+    | {
+        id: string;
+        user_id: string;
+        active_membership_id: string | null;
+        status: string;
+        created_at: string;
+        last_seen_at: string | null;
+        expires_at: string | null;
+        user_name: string;
+        user_email: string;
+        user_status: string;
+      }
+    | undefined
+): AppSessionRecord | null {
+  if (!sessionRow) {
+    return null;
+  }
+
+  const memberships = mapPortfolioMembershipRows(sessionRow.user_id);
+  const activeMembership =
+    memberships.find((membership) => membership.id === sessionRow.active_membership_id) ?? memberships[0];
+
+  return {
+    id: sessionRow.id,
+    user: {
+      id: sessionRow.user_id,
+      name: sessionRow.user_name,
+      email: sessionRow.user_email,
+      status: sessionRow.user_status
+    },
+    memberships,
+    activeMembershipId: activeMembership?.id,
+    activePortfolioId: activeMembership?.portfolioId,
+    activePortfolioName: activeMembership?.portfolioName,
+    activeRole: activeMembership?.role,
+    status: sessionRow.status,
+    createdAt: sessionRow.created_at,
+    lastSeenAt: sessionRow.last_seen_at ?? undefined,
+    expiresAt: sessionRow.expires_at ?? undefined
+  };
+}
+
+export function listAppUsers(): Array<AppUserRecord & { memberships: PortfolioMembershipRecord[] }> {
+  const db = getDatabase();
+
+  return db
+    .prepare(`SELECT id, name, email, status FROM app_users WHERE status = 'active' ORDER BY name ASC`)
+    .all()
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        name: string;
+        email: string;
+        status: string;
+      };
+
+      return {
+        id: typedRow.id,
+        name: typedRow.name,
+        email: typedRow.email,
+        status: typedRow.status,
+        memberships: mapPortfolioMembershipRows(typedRow.id)
+      };
+    });
+}
+
+export function createPortfolioMembership(input: {
+  userId: string;
+  portfolioId: string;
+  role: AppUserRole;
+}) {
+  const db = getDatabase();
+  const existing = db
+    .prepare(
+      `SELECT id
+       FROM user_portfolio_memberships
+       WHERE user_id = ? AND portfolio_id = ? AND role = ?
+       LIMIT 1`
+    )
+    .get(input.userId, input.portfolioId, input.role) as { id: string } | undefined;
+
+  if (existing) {
+    db.prepare(`UPDATE user_portfolio_memberships SET status = 'active' WHERE id = ?`).run(existing.id);
+    return existing.id;
+  }
+
+  const id = makeId("membership");
+  db.prepare(
+    `INSERT INTO user_portfolio_memberships (id, user_id, portfolio_id, role, status)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(id, input.userId, input.portfolioId, input.role, "active");
+
+  return id;
+}
+
+export function listBacnetGatewaysByBuildingId(buildingId: string): BacnetGatewayRecord[] {
+  const db = getDatabase();
+
+  return db
+    .prepare(
+      `SELECT id, building_id, name, protocol, vendor, host, port, status, auth_type, ingest_token, runtime_mode, command_endpoint, metadata_json,
+              agent_version, heartbeat_status, poll_interval_seconds, last_heartbeat_at, last_poll_requested_at, last_poll_completed_at, next_poll_due_at, runtime_metadata_json,
+              last_seen_at, last_discovery_at, created_at
+       FROM bacnet_gateways
+       WHERE building_id = ?
+       ORDER BY created_at DESC, id DESC`
+    )
+    .all(buildingId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        building_id: string;
+        name: string;
+        protocol: string;
+        vendor: string | null;
+        host: string | null;
+        port: number | null;
+        status: string;
+        auth_type: string | null;
+        ingest_token: string | null;
+        runtime_mode: string | null;
+        command_endpoint: string | null;
+        metadata_json: string | null;
+        agent_version: string | null;
+        heartbeat_status: string | null;
+        poll_interval_seconds: number | null;
+        last_heartbeat_at: string | null;
+        last_poll_requested_at: string | null;
+        last_poll_completed_at: string | null;
+        next_poll_due_at: string | null;
+        runtime_metadata_json: string | null;
+        last_seen_at: string | null;
+        last_discovery_at: string | null;
+        created_at: string;
+      };
+
+      return {
+        id: typedRow.id,
+        buildingId: typedRow.building_id,
+        name: typedRow.name,
+        protocol: typedRow.protocol,
+        vendor: typedRow.vendor ?? undefined,
+        host: typedRow.host ?? undefined,
+        port: typedRow.port ?? undefined,
+        status: typedRow.status,
+        authType: typedRow.auth_type ?? undefined,
+        ingestToken: typedRow.ingest_token ?? undefined,
+        runtimeMode: typedRow.runtime_mode ?? undefined,
+        commandEndpoint: typedRow.command_endpoint ?? undefined,
+        metadataJson: typedRow.metadata_json ?? undefined,
+        agentVersion: typedRow.agent_version ?? undefined,
+        heartbeatStatus: typedRow.heartbeat_status ?? undefined,
+        pollIntervalSeconds: typedRow.poll_interval_seconds ?? undefined,
+        lastHeartbeatAt: typedRow.last_heartbeat_at ?? undefined,
+        lastPollRequestedAt: typedRow.last_poll_requested_at ?? undefined,
+        lastPollCompletedAt: typedRow.last_poll_completed_at ?? undefined,
+        nextPollDueAt: typedRow.next_poll_due_at ?? undefined,
+        runtimeMetadataJson: typedRow.runtime_metadata_json ?? undefined,
+        lastSeenAt: typedRow.last_seen_at ?? undefined,
+        lastDiscoveryAt: typedRow.last_discovery_at ?? undefined,
+        createdAt: typedRow.created_at
+      };
+    });
+}
+
+export function getBacnetGatewayById(gatewayId: string): BacnetGatewayRecord | null {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT id, building_id, name, protocol, vendor, host, port, status, auth_type, ingest_token, runtime_mode, command_endpoint, metadata_json,
+              agent_version, heartbeat_status, poll_interval_seconds, last_heartbeat_at, last_poll_requested_at, last_poll_completed_at, next_poll_due_at, runtime_metadata_json,
+              last_seen_at, last_discovery_at, created_at
+       FROM bacnet_gateways
+       WHERE id = ?
+       LIMIT 1`
+    )
+    .get(gatewayId) as
+    | {
+        id: string;
+        building_id: string;
+        name: string;
+        protocol: string;
+        vendor: string | null;
+        host: string | null;
+        port: number | null;
+        status: string;
+        auth_type: string | null;
+        ingest_token: string | null;
+        runtime_mode: string | null;
+        command_endpoint: string | null;
+        metadata_json: string | null;
+        agent_version: string | null;
+        heartbeat_status: string | null;
+        poll_interval_seconds: number | null;
+        last_heartbeat_at: string | null;
+        last_poll_requested_at: string | null;
+        last_poll_completed_at: string | null;
+        next_poll_due_at: string | null;
+        runtime_metadata_json: string | null;
+        last_seen_at: string | null;
+        last_discovery_at: string | null;
+        created_at: string;
+      }
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    buildingId: row.building_id,
+    name: row.name,
+    protocol: row.protocol,
+    vendor: row.vendor ?? undefined,
+    host: row.host ?? undefined,
+    port: row.port ?? undefined,
+    status: row.status,
+    authType: row.auth_type ?? undefined,
+    ingestToken: row.ingest_token ?? undefined,
+    runtimeMode: row.runtime_mode ?? undefined,
+    commandEndpoint: row.command_endpoint ?? undefined,
+    metadataJson: row.metadata_json ?? undefined,
+    agentVersion: row.agent_version ?? undefined,
+    heartbeatStatus: row.heartbeat_status ?? undefined,
+    pollIntervalSeconds: row.poll_interval_seconds ?? undefined,
+    lastHeartbeatAt: row.last_heartbeat_at ?? undefined,
+    lastPollRequestedAt: row.last_poll_requested_at ?? undefined,
+    lastPollCompletedAt: row.last_poll_completed_at ?? undefined,
+    nextPollDueAt: row.next_poll_due_at ?? undefined,
+    runtimeMetadataJson: row.runtime_metadata_json ?? undefined,
+    lastSeenAt: row.last_seen_at ?? undefined,
+    lastDiscoveryAt: row.last_discovery_at ?? undefined,
+    createdAt: row.created_at
+  };
+}
+
+function requireGatewayToken(gatewayId: string, token: string) {
+  const gateway = getBacnetGatewayById(gatewayId);
+
+  if (!gateway) {
+    throw new Error(`Gateway ${gatewayId} not found.`);
+  }
+
+  if (!gateway.ingestToken || gateway.ingestToken !== token) {
+    throw new Error("Gateway token is invalid.");
+  }
+
+  return gateway;
+}
+
+function buildGatewayRuntimeState(gateway: BacnetGatewayRecord, asOf = new Date().toISOString()) {
+  const pollIntervalSeconds = normalizePollIntervalSeconds(gateway.pollIntervalSeconds);
+  const nextPollDueAt = gateway.nextPollDueAt ?? addSecondsToIso(asOf, pollIntervalSeconds);
+  const pendingDispatchCount = getDatabase()
+    .prepare(`SELECT COUNT(*) AS count FROM gateway_command_dispatches WHERE gateway_id = ? AND status = 'pending'`)
+    .get(gateway.id) as { count: number };
+
+  return {
+    gatewayId: gateway.id,
+    buildingId: gateway.buildingId,
+    runtimeMode: gateway.runtimeMode ?? "outbox",
+    protocol: gateway.protocol,
+    commandEndpoint: gateway.commandEndpoint,
+    pollIntervalSeconds,
+    nextPollDueAt,
+    lastHeartbeatAt: gateway.lastHeartbeatAt,
+    lastPollRequestedAt: gateway.lastPollRequestedAt,
+    lastPollCompletedAt: gateway.lastPollCompletedAt,
+    heartbeatStatus: gateway.heartbeatStatus ?? "unknown",
+    agentVersion: gateway.agentVersion,
+    pendingDispatchCount: pendingDispatchCount.count
+  };
+}
+
+function updateGatewayRuntimeMetadata(gatewayId: string, metadata: Record<string, unknown>) {
+  const gateway = getBacnetGatewayById(gatewayId);
+  if (!gateway) {
+    return null;
+  }
+
+  const existing = parseJsonObject(gateway.runtimeMetadataJson);
+  const next = {
+    ...existing,
+    ...metadata
+  };
+  getDatabase().prepare(`UPDATE bacnet_gateways SET runtime_metadata_json = ? WHERE id = ?`).run(JSON.stringify(next), gatewayId);
+  return next;
+}
+
+export function registerBacnetGateway(input: {
+  buildingId: string;
+  name: string;
+  protocol?: string;
+  vendor?: string;
+  host?: string;
+  port?: number;
+  authType?: string;
+  runtimeMode?: string;
+  commandEndpoint?: string;
+  pollIntervalSeconds?: number;
+  metadataJson?: string;
+}) {
+  const db = getDatabase();
+  const existing = db
+    .prepare(
+      `SELECT id
+       FROM bacnet_gateways
+       WHERE building_id = ?
+         AND LOWER(name) = LOWER(?)
+         AND COALESCE(LOWER(host), '') = COALESCE(LOWER(?), '')
+       LIMIT 1`
+    )
+    .get(input.buildingId, input.name, input.host ?? null) as { id: string } | undefined;
+  const gatewayId = existing?.id ?? makeId("gw");
+  const pollIntervalSeconds = normalizePollIntervalSeconds(input.pollIntervalSeconds);
+  const ingestToken =
+    existing
+      ? ((db
+          .prepare(`SELECT ingest_token FROM bacnet_gateways WHERE id = ?`)
+          .get(gatewayId) as { ingest_token: string | null } | undefined)?.ingest_token ?? makeSecretToken("gwtok"))
+      : makeSecretToken("gwtok");
+  const now = new Date().toISOString();
+  const nextPollDueAt = addSecondsToIso(now, pollIntervalSeconds);
+
+  if (existing) {
+    db.prepare(
+      `UPDATE bacnet_gateways
+       SET protocol = ?, vendor = ?, host = ?, port = ?, auth_type = ?, ingest_token = COALESCE(?, ingest_token), runtime_mode = ?, command_endpoint = ?, metadata_json = COALESCE(?, metadata_json),
+           poll_interval_seconds = ?, next_poll_due_at = COALESCE(next_poll_due_at, ?), status = ?, last_seen_at = ?
+       WHERE id = ?`
+    ).run(
+      input.protocol ?? "BACnet/IP",
+      input.vendor ?? null,
+      input.host ?? null,
+      input.port ?? null,
+      input.authType ?? null,
+      ingestToken,
+      input.runtimeMode ?? "outbox",
+      input.commandEndpoint ?? null,
+      input.metadataJson ?? null,
+      pollIntervalSeconds,
+      nextPollDueAt,
+      "configured",
+      now,
+      gatewayId
+    );
+  } else {
+    db.prepare(
+      `INSERT INTO bacnet_gateways (
+        id, building_id, name, protocol, vendor, host, port, status, auth_type, ingest_token, runtime_mode, command_endpoint, metadata_json, poll_interval_seconds, next_poll_due_at, last_seen_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      gatewayId,
+      input.buildingId,
+      input.name,
+      input.protocol ?? "BACnet/IP",
+      input.vendor ?? null,
+      input.host ?? null,
+      input.port ?? null,
+      "configured",
+      input.authType ?? null,
+      ingestToken,
+      input.runtimeMode ?? "outbox",
+      input.commandEndpoint ?? null,
+      input.metadataJson ?? null,
+      pollIntervalSeconds,
+      nextPollDueAt,
+      now
+    );
+  }
+
+  recordAuditEvent({
+    buildingId: input.buildingId,
+    entityType: "bacnet_gateway",
+    entityId: gatewayId,
+    action: existing ? "gateway_updated" : "gateway_registered",
+    actorType: "operator",
+    summary: `${input.name} gateway was ${existing ? "updated" : "registered"} for BACnet discovery.`,
+    metadataJson: JSON.stringify({
+      protocol: input.protocol ?? "BACnet/IP",
+      vendor: input.vendor ?? null,
+      host: input.host ?? null,
+      port: input.port ?? null,
+      runtimeMode: input.runtimeMode ?? "outbox",
+      commandEndpoint: input.commandEndpoint ?? null,
+      pollIntervalSeconds
+    })
+  });
+
+  return listBacnetGatewaysByBuildingId(input.buildingId).find((gateway) => gateway.id === gatewayId) ?? null;
+}
+
+export function updateBacnetGatewayConfiguration(input: {
+  gatewayId: string;
+  bridgeBackend?: string;
+  sdkModulePath?: string;
+  sdkExportName?: string;
+  sdkConfigJson?: string;
+  dispatchTimeoutSeconds?: number;
+  maxDispatchAttempts?: number;
+}) {
+  const gateway = getBacnetGatewayById(input.gatewayId);
+  if (!gateway) {
+    throw new Error(`Gateway ${input.gatewayId} not found.`);
+  }
+
+  const validation = validateGatewayConfigurationInput({
+    bridgeBackend: input.bridgeBackend,
+    sdkModulePath: input.sdkModulePath,
+    sdkExportName: input.sdkExportName,
+    sdkConfigJson: input.sdkConfigJson
+  });
+  const existingMetadata = getGatewayMetadata(gateway);
+  const metadata = {
+    ...existingMetadata,
+    bridgeBackend: validation.bridgeBackend,
+    sdkModulePath: input.sdkModulePath?.trim() || null,
+    sdkExportName: input.sdkExportName?.trim() || "createBacnetSdkProvider",
+    sdkConfigJson: input.sdkConfigJson?.trim() || "",
+    dispatchPolicy: {
+      timeoutSeconds:
+        input.dispatchTimeoutSeconds && Number.isFinite(input.dispatchTimeoutSeconds)
+          ? Math.max(30, Math.round(input.dispatchTimeoutSeconds))
+          : getGatewayDispatchPolicy(gateway).timeoutSeconds,
+      maxAttempts:
+        input.maxDispatchAttempts && Number.isFinite(input.maxDispatchAttempts)
+          ? Math.max(1, Math.round(input.maxDispatchAttempts))
+          : getGatewayDispatchPolicy(gateway).maxAttempts
+    },
+    configValidation: {
+      status: validation.status,
+      issues: validation.issues,
+      warnings: validation.warnings,
+      validatedAt: validation.validatedAt,
+      summary: {
+        pointCount: validation.pointCount,
+        writablePointCount: validation.writablePointCount,
+        whitelistedPointCount: validation.whitelistedPointCount
+      }
+    }
+  };
+
+  getDatabase()
+    .prepare(`UPDATE bacnet_gateways SET metadata_json = ?, last_seen_at = COALESCE(last_seen_at, ?) WHERE id = ?`)
+    .run(JSON.stringify(metadata), new Date().toISOString(), input.gatewayId);
+
+  recordAuditEvent({
+    buildingId: gateway.buildingId,
+    entityType: "bacnet_gateway",
+    entityId: gateway.id,
+    action: "gateway_configuration_updated",
+    actorType: "operator",
+    summary: `${gateway.name} gateway configuration was updated.`,
+    metadataJson: JSON.stringify({
+      bridgeBackend: validation.bridgeBackend,
+      validationStatus: validation.status,
+      pointCount: validation.pointCount,
+      writablePointCount: validation.writablePointCount,
+      whitelistedPointCount: validation.whitelistedPointCount
+    })
+  });
+
+  return getBacnetGatewayById(gateway.id);
+}
+
+export function replayMonitoringScenario(input: {
+  buildingId: string;
+  gatewayId?: string;
+  scenario?: string;
+  observedAt?: string;
+}) {
+  const scenario = normalizeReplayScenario(input.scenario);
+  const observedAt = input.observedAt?.trim() || defaultReplayObservedAt(scenario);
+  const existingGateway = input.gatewayId
+    ? getBacnetGatewayById(input.gatewayId)
+    : listBacnetGatewaysByBuildingId(input.buildingId)[0];
+  const gateway =
+    existingGateway ??
+    registerBacnetGateway({
+      buildingId: input.buildingId,
+      name: "Replay BACnet Gateway",
+      protocol: "BACnet/IP",
+      vendor: "AirWise Replay",
+      host: "127.0.0.1",
+      port: 47808,
+      runtimeMode: "outbox"
+    });
+
+  if (!gateway?.ingestToken) {
+    throw new Error("Replay requires a gateway with an ingest token.");
+  }
+
+  const snapshot = buildReplaySnapshot(addSecondsToIso(observedAt, -5 * 60));
+  const discoveryRun = ingestBacnetGatewayDiscoverySnapshot({
+    buildingId: input.buildingId,
+    gatewayId: gateway.id,
+    observedAt: snapshot.observedAt,
+    assets: snapshot.assets
+  });
+
+  const eventBatches = buildReplayScenarioEvents(scenario, observedAt);
+  let acceptedCount = 0;
+  let ignoredCount = 0;
+  for (const batch of eventBatches) {
+    const result = ingestBacnetGatewayTelemetry({
+      gatewayId: gateway.id,
+      token: gateway.ingestToken,
+      observedAt: batch.observedAt,
+      events: batch.events
+    });
+    acceptedCount += result.acceptedCount;
+    ignoredCount += result.ignoredCount;
+  }
+
+  const currentGateway = getBacnetGatewayById(gateway.id) ?? gateway;
+  const metadata = {
+    ...getGatewayMetadata(currentGateway),
+    replayProfile: {
+      lastScenario: scenario,
+      lastObservedAt: observedAt,
+      lastReplayAt: new Date().toISOString(),
+      acceptedCount,
+      ignoredCount
+    }
+  };
+  getDatabase().prepare(`UPDATE bacnet_gateways SET metadata_json = ? WHERE id = ?`).run(JSON.stringify(metadata), gateway.id);
+
+  const monitoring = getMonitoringWorkspaceByBuildingId(input.buildingId);
+  const activeIssueTypes = Array.from(new Set(monitoring.issues.map((issue) => issue.issueType)));
+
+  return {
+    gatewayId: gateway.id,
+    scenario,
+    observedAt,
+    acceptedCount,
+    ignoredCount,
+    discoveryRunId: discoveryRun.id,
+    activeIssueTypes,
+    issueCount: activeIssueTypes.length
+  };
+}
+
+export function listMonitoringAssetsByBuildingId(buildingId: string): MonitoringAssetRecord[] {
+  const db = getDatabase();
+
+  return db
+    .prepare(
+      `SELECT id, building_id, system_name, asset_type, protocol, vendor, location, status, source_gateway_id, source_asset_key
+       FROM monitoring_assets
+       WHERE building_id = ?
+       ORDER BY system_name ASC`
+    )
+    .all(buildingId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        building_id: string;
+        system_name: string;
+        asset_type: string;
+        protocol: string;
+        vendor: string | null;
+        location: string | null;
+        status: string;
+        source_gateway_id: string | null;
+        source_asset_key: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        buildingId: typedRow.building_id,
+        systemName: typedRow.system_name,
+        assetType: typedRow.asset_type,
+        protocol: typedRow.protocol,
+        vendor: typedRow.vendor ?? undefined,
+        location: typedRow.location ?? undefined,
+        status: typedRow.status,
+        sourceGatewayId: typedRow.source_gateway_id ?? undefined,
+        sourceAssetKey: typedRow.source_asset_key ?? undefined
+      };
+    });
+}
+
+export function listGatewayDiscoveryRunsByBuildingId(buildingId: string): DiscoveryRunRecord[] {
+  const db = getDatabase();
+
+  return db
+    .prepare(
+      `SELECT id, building_id, gateway_id, asset_count, point_count, telemetry_event_count, status, summary_json
+       FROM bacnet_gateway_discovery_runs
+       WHERE building_id = ?
+       ORDER BY started_at DESC, id DESC`
+    )
+    .all(buildingId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        building_id: string;
+        gateway_id: string;
+        asset_count: number;
+        point_count: number;
+        telemetry_event_count: number;
+        status: string;
+        summary_json: string | null;
+      };
+      const summary = parseJsonObject(typedRow.summary_json);
+
+      return {
+        id: typedRow.id,
+        buildingId: typedRow.building_id,
+        assetId: typeof summary.assetId === "string" ? summary.assetId : "",
+        pointId: typeof summary.pointId === "string" ? summary.pointId : "",
+        gatewayId: typedRow.gateway_id,
+        assetCount: typedRow.asset_count,
+        pointCount: typedRow.point_count,
+        telemetryEventCount: typedRow.telemetry_event_count,
+        status:
+          typedRow.status === "completed" || typedRow.status === "failed"
+            ? typedRow.status
+            : "queued"
+      };
+    });
+}
+
+export function listGatewayCommandDispatchesByBuildingId(buildingId: string): GatewayCommandDispatchRecord[] {
+  const db = getDatabase();
+
+  return db
+    .prepare(
+      `SELECT id, gateway_id, command_id, building_id, point_id, status, payload_json, response_json, error_message, created_at, dispatched_at, acknowledged_at,
+              delivery_attempt_count, last_delivery_attempt_at
+       FROM gateway_command_dispatches
+       WHERE building_id = ?
+       ORDER BY created_at DESC, id DESC`
+    )
+    .all(buildingId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        gateway_id: string;
+        command_id: string;
+        building_id: string;
+        point_id: string;
+        status: string;
+        payload_json: string;
+        response_json: string | null;
+        error_message: string | null;
+        created_at: string;
+        dispatched_at: string | null;
+        acknowledged_at: string | null;
+        delivery_attempt_count: number;
+        last_delivery_attempt_at: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        gatewayId: typedRow.gateway_id,
+        commandId: typedRow.command_id,
+        buildingId: typedRow.building_id,
+        pointId: typedRow.point_id,
+        status: typedRow.status,
+        payloadJson: typedRow.payload_json,
+        responseJson: typedRow.response_json ?? undefined,
+        errorMessage: typedRow.error_message ?? undefined,
+        createdAt: typedRow.created_at,
+        dispatchedAt: typedRow.dispatched_at ?? undefined,
+        acknowledgedAt: typedRow.acknowledged_at ?? undefined,
+        deliveryAttemptCount: typedRow.delivery_attempt_count,
+        lastDeliveryAttemptAt: typedRow.last_delivery_attempt_at ?? undefined
+      };
+    });
+}
+
+function resolveGatewayPoint(input: {
+  gatewayId: string;
+  assetKey?: string;
+  pointKey?: string;
+  objectIdentifier?: string;
+}) {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT bp.id AS point_id, ma.id AS asset_id, ma.building_id
+       FROM bas_points bp
+       INNER JOIN monitoring_assets ma ON ma.id = bp.monitoring_asset_id
+       WHERE ma.source_gateway_id = ?
+         AND (
+           (? IS NOT NULL AND ma.source_asset_key = ? AND bp.source_point_key = ?)
+           OR (? IS NOT NULL AND ma.source_asset_key = ? AND bp.object_identifier = ?)
+           OR (? IS NOT NULL AND bp.source_point_key = ?)
+           OR (? IS NOT NULL AND bp.object_identifier = ?)
+         )
+       ORDER BY
+         CASE
+           WHEN ? IS NOT NULL AND ma.source_asset_key = ? AND bp.source_point_key = ? THEN 1
+           WHEN ? IS NOT NULL AND ma.source_asset_key = ? AND bp.object_identifier = ? THEN 2
+           WHEN ? IS NOT NULL AND bp.source_point_key = ? THEN 3
+           WHEN ? IS NOT NULL AND bp.object_identifier = ? THEN 4
+           ELSE 5
+         END
+       LIMIT 1`
+    )
+    .get(
+      input.gatewayId,
+      input.assetKey ?? null,
+      input.assetKey ?? null,
+      input.pointKey ?? null,
+      input.assetKey ?? null,
+      input.assetKey ?? null,
+      input.objectIdentifier ?? null,
+      input.pointKey ?? null,
+      input.pointKey ?? null,
+      input.objectIdentifier ?? null,
+      input.objectIdentifier ?? null,
+      input.assetKey ?? null,
+      input.assetKey ?? null,
+      input.pointKey ?? null,
+      input.assetKey ?? null,
+      input.assetKey ?? null,
+      input.objectIdentifier ?? null,
+      input.pointKey ?? null,
+      input.pointKey ?? null,
+      input.objectIdentifier ?? null,
+      input.objectIdentifier ?? null
+    ) as
+    | {
+        point_id: string;
+        asset_id: string;
+        building_id: string;
+      }
+    | undefined;
+
+  return row
+    ? {
+        pointId: row.point_id,
+        assetId: row.asset_id,
+        buildingId: row.building_id
+      }
+    : null;
+}
+
+export function createAppSessionForUser(input: { email: string; membershipId?: string }) {
+  const db = getDatabase();
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const user = db
+    .prepare(`SELECT id, name, email, status FROM app_users WHERE LOWER(email) = ? LIMIT 1`)
+    .get(normalizedEmail) as
+    | {
+        id: string;
+        name: string;
+        email: string;
+        status: string;
+      }
+    | undefined;
+
+  if (!user || user.status !== "active") {
+    throw new Error(`No active AirWise user exists for ${input.email}.`);
+  }
+
+  const memberships = mapPortfolioMembershipRows(user.id);
+  if (memberships.length === 0) {
+    throw new Error(`User ${input.email} does not have access to any portfolio.`);
+  }
+
+  const activeMembership =
+    memberships.find((membership) => membership.id === input.membershipId) ?? memberships[0];
+  const sessionId = makeId("session");
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  db.prepare(
+    `INSERT INTO app_sessions (id, user_id, active_membership_id, status, created_at, last_seen_at, expires_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(sessionId, user.id, activeMembership?.id ?? null, "active", now, now, expiresAt);
+
+  return getAppSessionById(sessionId);
+}
+
+export function getAppSessionById(sessionId: string): AppSessionRecord | null {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT s.id, s.user_id, s.active_membership_id, s.status, s.created_at, s.last_seen_at, s.expires_at,
+              u.name AS user_name, u.email AS user_email, u.status AS user_status
+       FROM app_sessions s
+       INNER JOIN app_users u ON u.id = s.user_id
+       WHERE s.id = ? AND s.status = 'active'
+       LIMIT 1`
+    )
+    .get(sessionId) as
+    | {
+        id: string;
+        user_id: string;
+        active_membership_id: string | null;
+        status: string;
+        created_at: string;
+        last_seen_at: string | null;
+        expires_at: string | null;
+        user_name: string;
+        user_email: string;
+        user_status: string;
+      }
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    db.prepare(`UPDATE app_sessions SET status = 'expired' WHERE id = ?`).run(sessionId);
+    return null;
+  }
+
+  db.prepare(`UPDATE app_sessions SET last_seen_at = ? WHERE id = ?`).run(new Date().toISOString(), sessionId);
+  return buildSessionRecord(row);
+}
+
+export function endAppSession(sessionId: string) {
+  const db = getDatabase();
+  db.prepare(`UPDATE app_sessions SET status = 'ended', last_seen_at = ? WHERE id = ?`).run(
+    new Date().toISOString(),
+    sessionId
+  );
+}
+
+export function switchAppSessionMembership(input: { sessionId: string; membershipId: string }) {
+  const db = getDatabase();
+  const session = getAppSessionById(input.sessionId);
+
+  if (!session) {
+    throw new Error("Session not found.");
+  }
+
+  const membership = session.memberships.find((item) => item.id === input.membershipId);
+  if (!membership) {
+    throw new Error("Membership does not belong to the current user.");
+  }
+
+  db.prepare(`UPDATE app_sessions SET active_membership_id = ?, last_seen_at = ? WHERE id = ?`).run(
+    membership.id,
+    new Date().toISOString(),
+    input.sessionId
+  );
+
+  return getAppSessionById(input.sessionId);
+}
+
 export function createPortfolio(input: { name: string; ownerName?: string }) {
   const db = getDatabase();
   const portfolio = {
@@ -997,7 +2542,7 @@ export function listPublicBuildingRecords(datasetName?: string): PublicBuildingR
   const rows = datasetName
     ? db
         .prepare(
-          `SELECT id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
+          `SELECT id, dataset_name, source_version, source_record_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
            FROM public_building_records
            WHERE dataset_name = ?
            ORDER BY imported_at DESC, id DESC`
@@ -1005,7 +2550,7 @@ export function listPublicBuildingRecords(datasetName?: string): PublicBuildingR
         .all(datasetName)
     : db
         .prepare(
-          `SELECT id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
+          `SELECT id, dataset_name, source_version, source_record_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
            FROM public_building_records
            ORDER BY imported_at DESC, id DESC`
         )
@@ -1016,6 +2561,7 @@ export function listPublicBuildingRecords(datasetName?: string): PublicBuildingR
       id: string;
       dataset_name: string;
       source_version: string | null;
+      source_record_key: string | null;
       address_line_1: string;
       city: string | null;
       state: string | null;
@@ -1032,6 +2578,7 @@ export function listPublicBuildingRecords(datasetName?: string): PublicBuildingR
       id: typedRow.id,
       datasetName: typedRow.dataset_name,
       sourceVersion: typedRow.source_version ?? undefined,
+      sourceRecordKey: typedRow.source_record_key ?? undefined,
       addressLine1: typedRow.address_line_1,
       city: typedRow.city ?? undefined,
       state: typedRow.state ?? undefined,
@@ -1081,29 +2628,47 @@ export function listPublicMatchesByBuildingId(buildingId: string): PublicBuildin
 export function findPublicBuildingCandidates(buildingId: string): PublicBuildingRecord[] {
   const db = getDatabase();
   const building = getBuildingById(buildingId);
+  const normalizedAddressKey = normalizeAddressKey({
+    addressLine1: building.addressLine1,
+    city: building.city,
+    state: building.state,
+    zip: building.zip
+  });
 
   const rows = db
     .prepare(
-      `SELECT id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
+      `SELECT id, dataset_name, source_version, source_record_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
        FROM public_building_records
        WHERE (bbl IS NOT NULL AND bbl = ?)
           OR (bin IS NOT NULL AND bin = ?)
+          OR (normalized_address_key IS NOT NULL AND normalized_address_key = ?)
           OR (LOWER(address_line_1) = LOWER(?) AND LOWER(COALESCE(city, '')) = LOWER(?))
        ORDER BY
          CASE
            WHEN bbl IS NOT NULL AND bbl = ? THEN 1
            WHEN bin IS NOT NULL AND bin = ? THEN 2
-           ELSE 3
+           WHEN normalized_address_key IS NOT NULL AND normalized_address_key = ? THEN 3
+           ELSE 4
          END,
          imported_at DESC`
     )
-    .all(building.bbl ?? "", building.bin ?? "", building.addressLine1, building.city, building.bbl ?? "", building.bin ?? "");
+    .all(
+      building.bbl ?? "",
+      building.bin ?? "",
+      normalizedAddressKey ?? "",
+      building.addressLine1,
+      building.city,
+      building.bbl ?? "",
+      building.bin ?? "",
+      normalizedAddressKey ?? ""
+    );
 
   return rows.map((row) => {
     const typedRow = row as {
       id: string;
       dataset_name: string;
       source_version: string | null;
+      source_record_key: string | null;
       address_line_1: string;
       city: string | null;
       state: string | null;
@@ -1120,6 +2685,7 @@ export function findPublicBuildingCandidates(buildingId: string): PublicBuilding
       id: typedRow.id,
       datasetName: typedRow.dataset_name,
       sourceVersion: typedRow.source_version ?? undefined,
+      sourceRecordKey: typedRow.source_record_key ?? undefined,
       addressLine1: typedRow.address_line_1,
       city: typedRow.city ?? undefined,
       state: typedRow.state ?? undefined,
@@ -1137,6 +2703,7 @@ export function findPublicBuildingCandidates(buildingId: string): PublicBuilding
 export function importPublicBuildingRecords(input: {
   datasetName: string;
   sourceVersion?: string;
+  sourceFile?: string;
   rows: Array<{
     addressLine1: string;
     city?: string;
@@ -1148,40 +2715,321 @@ export function importPublicBuildingRecords(input: {
     compliancePathway?: string;
     article?: string;
     grossSquareFeet?: number;
+    sourceRecordKey?: string;
     sourceRowJson?: string;
   }>;
 }) {
   const db = getDatabase();
+  const importRunId = makeId("pubrun");
   const insert = db.prepare(
     `INSERT INTO public_building_records (
-      id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      id, dataset_name, source_version, source_record_key, normalized_address_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const update = db.prepare(
+    `UPDATE public_building_records
+     SET address_line_1 = ?, city = ?, state = ?, zip = ?, bbl = ?, bin = ?, covered_status = ?, compliance_pathway = ?, article = ?, gross_sq_ft = ?, source_row_json = ?, normalized_address_key = ?, source_record_key = ?
+     WHERE id = ?`
+  );
+  const selectExistingByRecordKey = db.prepare(
+    `SELECT id, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json, normalized_address_key, source_record_key
+     FROM public_building_records
+     WHERE dataset_name = ? AND COALESCE(source_version, '') = COALESCE(?, '')
+       AND source_record_key = ?
+     LIMIT 1`
+  );
+  const selectExistingByIdentity = db.prepare(
+    `SELECT id, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json, normalized_address_key, source_record_key
+     FROM public_building_records
+     WHERE dataset_name = ? AND COALESCE(source_version, '') = COALESCE(?, '')
+       AND (
+         (? IS NOT NULL AND bbl = ?)
+         OR (? IS NOT NULL AND bin = ?)
+         OR (? IS NOT NULL AND normalized_address_key = ?)
+       )
+     ORDER BY
+       CASE
+         WHEN ? IS NOT NULL AND bbl = ? THEN 1
+         WHEN ? IS NOT NULL AND bin = ? THEN 2
+         WHEN ? IS NOT NULL AND normalized_address_key = ? THEN 3
+         ELSE 4
+       END,
+       imported_at DESC
+     LIMIT 1`
+  );
+  let insertedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  db.prepare(
+    `INSERT INTO public_import_runs (
+      id, dataset_name, source_version, source_file, row_count, inserted_count, updated_count, skipped_count, status, summary_json, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    importRunId,
+    input.datasetName,
+    input.sourceVersion ?? null,
+    input.sourceFile ?? null,
+    input.rows.length,
+    0,
+    0,
+    0,
+    "running",
+    null,
+    null
   );
 
-  for (const row of input.rows) {
-    insert.run(
-      makeId("pub"),
-      input.datasetName,
-      input.sourceVersion ?? null,
-      row.addressLine1,
-      row.city ?? null,
-      row.state ?? null,
-      row.zip ?? null,
-      row.bbl ?? null,
-      row.bin ?? null,
-      row.coveredStatus ?? null,
-      row.compliancePathway ?? null,
-      row.article ?? null,
-      row.grossSquareFeet ?? null,
-      row.sourceRowJson ?? null
+  try {
+    for (const row of input.rows) {
+      const addressLine1 = row.addressLine1.trim() || "Unknown address";
+      const city = row.city?.trim() || undefined;
+      const state = row.state?.trim().toUpperCase() || undefined;
+      const trimmedZip = row.zip?.trim();
+      const zip = normalizeDigits(trimmedZip) ?? (trimmedZip && trimmedZip.length > 0 ? trimmedZip : undefined);
+      const bbl = normalizeDigits(row.bbl);
+      const bin = normalizeDigits(row.bin);
+      const normalizedAddressKey = normalizeAddressKey({
+        addressLine1,
+        city,
+        state,
+        zip
+      });
+      const compliancePathway = normalizePublicPathwayValue(row.compliancePathway);
+      const article = normalizePublicArticleValue(row.article, compliancePathway);
+      const coveredStatus =
+        normalizeCoveredStatusValue(row.coveredStatus) ??
+        (compliancePathway || article ? "covered" : undefined);
+      const grossSquareFeet =
+        typeof row.grossSquareFeet === "number" && Number.isFinite(row.grossSquareFeet)
+          ? row.grossSquareFeet
+          : undefined;
+      const sourceRecordKey =
+        row.sourceRecordKey?.trim() ||
+        [bbl, bin, normalizedAddressKey].filter((part) => part && part.length > 0).join("|") ||
+        undefined;
+      const existing =
+        (sourceRecordKey
+          ? (selectExistingByRecordKey.get(
+              input.datasetName,
+              input.sourceVersion ?? null,
+              sourceRecordKey
+            ) as
+              | {
+                  id: string;
+                  address_line_1: string;
+                  city: string | null;
+                  state: string | null;
+                  zip: string | null;
+                  bbl: string | null;
+                  bin: string | null;
+                  covered_status: string | null;
+                  compliance_pathway: string | null;
+                  article: string | null;
+                  gross_sq_ft: number | null;
+                  source_row_json: string | null;
+                  normalized_address_key: string | null;
+                  source_record_key: string | null;
+                }
+              | undefined)
+          : undefined) ??
+        (selectExistingByIdentity.get(
+          input.datasetName,
+          input.sourceVersion ?? null,
+          bbl ?? null,
+          bbl ?? null,
+          bin ?? null,
+          bin ?? null,
+          normalizedAddressKey ?? null,
+          normalizedAddressKey ?? null,
+          bbl ?? null,
+          bbl ?? null,
+          bin ?? null,
+          bin ?? null,
+          normalizedAddressKey ?? null,
+          normalizedAddressKey ?? null
+        ) as
+          | {
+              id: string;
+              address_line_1: string;
+              city: string | null;
+              state: string | null;
+              zip: string | null;
+              bbl: string | null;
+              bin: string | null;
+              covered_status: string | null;
+              compliance_pathway: string | null;
+              article: string | null;
+              gross_sq_ft: number | null;
+              source_row_json: string | null;
+              normalized_address_key: string | null;
+              source_record_key: string | null;
+            }
+          | undefined);
+
+      if (!existing) {
+        insert.run(
+          makeId("pub"),
+          input.datasetName,
+          input.sourceVersion ?? null,
+          sourceRecordKey ?? null,
+          normalizedAddressKey ?? null,
+          addressLine1,
+          city ?? null,
+          state ?? null,
+          zip ?? null,
+          bbl ?? null,
+          bin ?? null,
+          coveredStatus ?? null,
+          compliancePathway ?? null,
+          article ?? null,
+          grossSquareFeet ?? null,
+          row.sourceRowJson ?? null
+        );
+        insertedCount += 1;
+        continue;
+      }
+
+      const hasChanged =
+        existing.address_line_1 !== addressLine1 ||
+        (existing.city ?? null) !== (city ?? null) ||
+        (existing.state ?? null) !== (state ?? null) ||
+        (existing.zip ?? null) !== (zip ?? null) ||
+        (existing.bbl ?? null) !== (bbl ?? null) ||
+        (existing.bin ?? null) !== (bin ?? null) ||
+        (existing.covered_status ?? null) !== (coveredStatus ?? null) ||
+        (existing.compliance_pathway ?? null) !== (compliancePathway ?? null) ||
+        (existing.article ?? null) !== (article ?? null) ||
+        Number(existing.gross_sq_ft ?? 0) !== Number(grossSquareFeet ?? 0) ||
+        (existing.source_row_json ?? null) !== (row.sourceRowJson ?? null) ||
+        (existing.normalized_address_key ?? null) !== (normalizedAddressKey ?? null) ||
+        (existing.source_record_key ?? null) !== (sourceRecordKey ?? null);
+
+      if (!hasChanged) {
+        skippedCount += 1;
+        continue;
+      }
+
+      update.run(
+        addressLine1,
+        city ?? null,
+        state ?? null,
+        zip ?? null,
+        bbl ?? null,
+        bin ?? null,
+        coveredStatus ?? null,
+        compliancePathway ?? null,
+        article ?? null,
+        grossSquareFeet ?? null,
+        row.sourceRowJson ?? null,
+        normalizedAddressKey ?? null,
+        sourceRecordKey ?? null,
+        existing.id
+      );
+      updatedCount += 1;
+    }
+  } catch (error) {
+    db.prepare(
+      `UPDATE public_import_runs
+       SET inserted_count = ?, updated_count = ?, skipped_count = ?, status = ?, summary_json = ?, completed_at = ?
+       WHERE id = ?`
+    ).run(
+      insertedCount,
+      updatedCount,
+      skippedCount,
+      "failed",
+      JSON.stringify({
+        datasetName: input.datasetName,
+        sourceVersion: input.sourceVersion ?? null,
+        sourceFile: input.sourceFile ?? null,
+        rowCount: input.rows.length,
+        insertedCount,
+        updatedCount,
+        skippedCount,
+        error: error instanceof Error ? error.message : String(error)
+      }),
+      new Date().toISOString(),
+      importRunId
     );
+    throw error;
   }
 
+  const summary = JSON.stringify({
+    datasetName: input.datasetName,
+    sourceVersion: input.sourceVersion ?? null,
+    sourceFile: input.sourceFile ?? null,
+    rowCount: input.rows.length,
+    insertedCount,
+    updatedCount,
+    skippedCount
+  });
+
+  db.prepare(
+    `UPDATE public_import_runs
+     SET inserted_count = ?, updated_count = ?, skipped_count = ?, status = ?, summary_json = ?, completed_at = ?
+     WHERE id = ?`
+  ).run(
+    insertedCount,
+    updatedCount,
+    skippedCount,
+    "completed",
+    summary,
+    new Date().toISOString(),
+    importRunId
+  );
+
   return {
+    importRunId,
     datasetName: input.datasetName,
     sourceVersion: input.sourceVersion,
-    importedCount: input.rows.length
+    sourceFile: input.sourceFile,
+    importedCount: input.rows.length,
+    insertedCount,
+    updatedCount,
+    skippedCount
   };
+}
+
+export function listPublicImportRuns(limit = 20): PublicImportRunRecord[] {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT id, dataset_name, source_version, source_file, row_count, inserted_count, updated_count, skipped_count, status, summary_json, started_at, completed_at
+       FROM public_import_runs
+       ORDER BY started_at DESC, id DESC
+       LIMIT ?`
+    )
+    .all(limit)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        dataset_name: string;
+        source_version: string | null;
+        source_file: string | null;
+        row_count: number;
+        inserted_count: number;
+        updated_count: number;
+        skipped_count: number;
+        status: string;
+        summary_json: string | null;
+        started_at: string;
+        completed_at: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        datasetName: typedRow.dataset_name,
+        sourceVersion: typedRow.source_version ?? undefined,
+        sourceFile: typedRow.source_file ?? undefined,
+        rowCount: typedRow.row_count,
+        insertedCount: typedRow.inserted_count,
+        updatedCount: typedRow.updated_count,
+        skippedCount: typedRow.skipped_count,
+        status: typedRow.status,
+        summaryJson: typedRow.summary_json ?? undefined,
+        startedAt: typedRow.started_at,
+        completedAt: typedRow.completed_at ?? undefined
+      };
+    });
 }
 
 export function autoMatchPublicBuildingRecord(buildingId: string) {
@@ -1241,6 +3089,20 @@ export function autoMatchPublicBuildingRecord(buildingId: string) {
   } satisfies PublicBuildingMatchRecord;
 }
 
+export function autoMatchPublicBuildingRecordsForAllBuildings() {
+  const buildingIds = listBuildingIds();
+  const results = buildingIds.map((buildingId) => ({
+    buildingId,
+    match: autoMatchPublicBuildingRecord(buildingId)
+  }));
+
+  return {
+    buildingCount: buildingIds.length,
+    matchedCount: results.filter((result) => result.match).length,
+    results
+  };
+}
+
 export function getPublicSourceWorkspaceByBuildingId(buildingId: string): PublicSourceWorkspace {
   return {
     candidates: findPublicBuildingCandidates(buildingId),
@@ -1252,7 +3114,7 @@ function getPublicBuildingRecordById(publicRecordId: string): PublicBuildingReco
   const db = getDatabase();
   const row = db
     .prepare(
-      `SELECT id, dataset_name, source_version, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
+      `SELECT id, dataset_name, source_version, source_record_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft
        FROM public_building_records
        WHERE id = ?`
     )
@@ -1261,6 +3123,7 @@ function getPublicBuildingRecordById(publicRecordId: string): PublicBuildingReco
         id: string;
         dataset_name: string;
         source_version: string | null;
+        source_record_key: string | null;
         address_line_1: string;
         city: string | null;
         state: string | null;
@@ -1282,6 +3145,7 @@ function getPublicBuildingRecordById(publicRecordId: string): PublicBuildingReco
     id: row.id,
     datasetName: row.dataset_name,
     sourceVersion: row.source_version ?? undefined,
+    sourceRecordKey: row.source_record_key ?? undefined,
     addressLine1: row.address_line_1,
     city: row.city ?? undefined,
     state: row.state ?? undefined,
@@ -2764,17 +4628,1012 @@ export function updateBasPointMapping(input: {
   return listBasPointsByBuildingId(existing.building_id).find((point) => point.id === input.pointId) ?? null;
 }
 
+function insertTelemetryEvent(input: {
+  buildingId: string;
+  systemId?: string;
+  pointId?: string;
+  timestamp: string;
+  valueNumeric?: number | null;
+  valueText?: string | null;
+  unit?: string | null;
+  qualityFlag?: string | null;
+}) {
+  const db = getDatabase();
+  db.prepare(
+    `INSERT INTO telemetry_events (
+      id, building_id, system_id, point_id, timestamp, value_numeric, value_text, unit, quality_flag
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    makeId("evt"),
+    input.buildingId,
+    input.systemId ?? null,
+    input.pointId ?? null,
+    input.timestamp,
+    input.valueNumeric ?? null,
+    input.valueText ?? null,
+    input.unit ?? null,
+    input.qualityFlag ?? "ok"
+  );
+}
+
+export function ingestBacnetGatewayDiscoverySnapshot(input: {
+  buildingId: string;
+  gatewayId?: string;
+  gateway?: {
+    name?: string;
+    protocol?: string;
+    vendor?: string;
+    host?: string;
+    port?: number;
+    authType?: string;
+    metadataJson?: string;
+  };
+  observedAt?: string;
+  assets: Array<{
+    assetKey?: string;
+    systemName: string;
+    assetType?: string;
+    protocol?: string;
+    vendor?: string;
+    location?: string;
+    status?: string;
+    metadata?: Record<string, unknown>;
+    points: Array<{
+      pointKey?: string;
+      objectIdentifier: string;
+      objectName: string;
+      canonicalPointType?: string;
+      unit?: string;
+      isWritable?: boolean;
+      isWhitelisted?: boolean;
+      safetyCategory?: string;
+      presentValue?: string | number;
+      qualityFlag?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  }>;
+}) {
+  const db = getDatabase();
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const gateway =
+    (input.gatewayId ? listBacnetGatewaysByBuildingId(input.buildingId).find((item) => item.id === input.gatewayId) : null) ??
+    registerBacnetGateway({
+      buildingId: input.buildingId,
+      name: input.gateway?.name ?? "BACnet Gateway",
+      protocol: input.gateway?.protocol ?? "BACnet/IP",
+      vendor: input.gateway?.vendor,
+      host: input.gateway?.host,
+      port: input.gateway?.port,
+      authType: input.gateway?.authType,
+      metadataJson: input.gateway?.metadataJson
+    });
+
+  if (!gateway) {
+    throw new Error("Could not resolve a BACnet gateway for discovery.");
+  }
+
+  const discoveryRunId = makeId("gwdiscover");
+  db.prepare(
+    `INSERT INTO bacnet_gateway_discovery_runs (
+      id, gateway_id, building_id, source, asset_count, point_count, telemetry_event_count, status, summary_json, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(discoveryRunId, gateway.id, input.buildingId, "gateway_snapshot", 0, 0, 0, "running", null, null);
+
+  let assetCount = 0;
+  let pointCount = 0;
+  let telemetryEventCount = 0;
+  let firstAssetId = "";
+  let firstPointId = "";
+
+  try {
+    for (const asset of input.assets) {
+      const sourceAssetKey =
+        normalizeSourceKey(asset.assetKey) ??
+        normalizeSourceKey([asset.systemName, asset.location].filter(Boolean).join("|")) ??
+        makeId("assetkey");
+      const existingAsset = db
+        .prepare(
+          `SELECT id
+           FROM monitoring_assets
+           WHERE building_id = ?
+             AND source_gateway_id = ?
+             AND source_asset_key = ?
+           LIMIT 1`
+        )
+        .get(input.buildingId, gateway.id, sourceAssetKey) as { id: string } | undefined;
+      const assetId = existingAsset?.id ?? makeId("asset");
+
+      if (existingAsset) {
+        db.prepare(
+          `UPDATE monitoring_assets
+           SET system_name = ?, asset_type = ?, protocol = ?, vendor = ?, location = ?, status = ?, source_gateway_id = ?, source_asset_key = ?
+           WHERE id = ?`
+        ).run(
+          asset.systemName,
+          asset.assetType ?? "fan_system",
+          asset.protocol ?? gateway.protocol,
+          asset.vendor ?? gateway.vendor ?? null,
+          asset.location ?? null,
+          asset.status ?? "active",
+          gateway.id,
+          sourceAssetKey,
+          assetId
+        );
+      } else {
+        db.prepare(
+          `INSERT INTO monitoring_assets (
+            id, building_id, system_name, asset_type, protocol, vendor, location, status, source_gateway_id, source_asset_key
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          assetId,
+          input.buildingId,
+          asset.systemName,
+          asset.assetType ?? "fan_system",
+          asset.protocol ?? gateway.protocol,
+          asset.vendor ?? gateway.vendor ?? null,
+          asset.location ?? null,
+          asset.status ?? "active",
+          gateway.id,
+          sourceAssetKey
+        );
+      }
+
+      if (!firstAssetId) {
+        firstAssetId = assetId;
+      }
+      assetCount += 1;
+
+      for (const point of asset.points) {
+        const pointType =
+          canonicalPointTypes.includes(point.canonicalPointType as MonitoringPointType)
+            ? (point.canonicalPointType as MonitoringPointType)
+            : inferCanonicalPointType({
+                objectName: point.objectName,
+                objectIdentifier: point.objectIdentifier,
+                unit: point.unit
+              });
+        const safetyCategory = inferSafetyCategory({
+          objectName: point.objectName,
+          canonicalPointType: pointType,
+          safetyCategory: point.safetyCategory
+        });
+        const pointKey =
+          normalizeSourceKey(point.pointKey) ??
+          normalizeSourceKey(point.objectIdentifier) ??
+          normalizeSourceKey(point.objectName) ??
+          makeId("pointkey");
+        const isWritable = Boolean(point.isWritable);
+        const isWhitelisted =
+          typeof point.isWhitelisted === "boolean"
+            ? point.isWhitelisted
+            : Boolean(isWritable && pointType && writablePointTypes.includes(pointType) && safetyCategory !== "life_safety");
+        const existingPoint = db
+          .prepare(
+            `SELECT id
+             FROM bas_points
+             WHERE monitoring_asset_id = ?
+               AND (source_point_key = ? OR object_identifier = ?)
+             LIMIT 1`
+          )
+          .get(assetId, pointKey, point.objectIdentifier) as { id: string } | undefined;
+        const pointId = existingPoint?.id ?? makeId("point");
+        const metadataJson = JSON.stringify({
+          gatewayId: gateway.id,
+          sourcePointKey: pointKey,
+          gatewayPointMetadata: point.metadata ?? {},
+          currentValue:
+            typeof point.presentValue === "string" || typeof point.presentValue === "number"
+              ? String(point.presentValue)
+              : undefined,
+          lastGatewaySeenAt: observedAt
+        });
+
+        if (existingPoint) {
+          db.prepare(
+            `UPDATE bas_points
+             SET object_identifier = ?, object_name = ?, canonical_point_type = ?, unit = ?, is_writable = ?, is_whitelisted = ?, safety_category = ?, metadata_json = ?, source_point_key = ?
+             WHERE id = ?`
+          ).run(
+            point.objectIdentifier,
+            point.objectName,
+            pointType ?? null,
+            point.unit ?? null,
+            isWritable ? 1 : 0,
+            isWhitelisted ? 1 : 0,
+            safetyCategory,
+            metadataJson,
+            pointKey,
+            pointId
+          );
+        } else {
+          db.prepare(
+            `INSERT INTO bas_points (
+              id, monitoring_asset_id, object_identifier, object_name, canonical_point_type, unit, is_writable, is_whitelisted, safety_category, metadata_json, source_point_key
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).run(
+            pointId,
+            assetId,
+            point.objectIdentifier,
+            point.objectName,
+            pointType ?? null,
+            point.unit ?? null,
+            isWritable ? 1 : 0,
+            isWhitelisted ? 1 : 0,
+            safetyCategory,
+            metadataJson,
+            pointKey
+          );
+        }
+
+        if (!firstPointId) {
+          firstPointId = pointId;
+        }
+        pointCount += 1;
+
+        if (typeof point.presentValue === "number" || typeof point.presentValue === "string") {
+          insertTelemetryEvent({
+            buildingId: input.buildingId,
+            systemId: assetId,
+            pointId,
+            timestamp: observedAt,
+            valueNumeric: typeof point.presentValue === "number" ? point.presentValue : null,
+            valueText: typeof point.presentValue === "string" ? point.presentValue : null,
+            unit: point.unit ?? null,
+            qualityFlag: point.qualityFlag ?? "ok"
+          });
+          telemetryEventCount += 1;
+        }
+      }
+    }
+
+    db.prepare(
+      `UPDATE bacnet_gateways
+       SET status = ?, last_seen_at = ?, last_discovery_at = ?
+       WHERE id = ?`
+    ).run("online", observedAt, observedAt, gateway.id);
+
+    const summaryJson = JSON.stringify({
+      gatewayId: gateway.id,
+      gatewayName: gateway.name,
+      assetId: firstAssetId,
+      pointId: firstPointId,
+      assetCount,
+      pointCount,
+      telemetryEventCount
+    });
+
+    db.prepare(
+      `UPDATE bacnet_gateway_discovery_runs
+       SET asset_count = ?, point_count = ?, telemetry_event_count = ?, status = ?, summary_json = ?, completed_at = ?
+       WHERE id = ?`
+    ).run(assetCount, pointCount, telemetryEventCount, "completed", summaryJson, new Date().toISOString(), discoveryRunId);
+
+    recordAuditEvent({
+      buildingId: input.buildingId,
+      entityType: "bacnet_gateway_discovery",
+      entityId: discoveryRunId,
+      action: "gateway_snapshot_imported",
+      actorType: "operator",
+      summary: `${gateway.name} imported ${assetCount} asset(s) and ${pointCount} point(s) from a gateway snapshot.`,
+      metadataJson: summaryJson
+    });
+
+    normalizeTelemetryEvents();
+    evaluateMonitoringRulesForBuilding(input.buildingId);
+
+    return {
+      id: discoveryRunId,
+      buildingId: input.buildingId,
+      assetId: firstAssetId,
+      pointId: firstPointId,
+      gatewayId: gateway.id,
+      assetCount,
+      pointCount,
+      telemetryEventCount,
+      status: "completed"
+    } satisfies DiscoveryRunRecord;
+  } catch (error) {
+    db.prepare(
+      `UPDATE bacnet_gateway_discovery_runs
+       SET asset_count = ?, point_count = ?, telemetry_event_count = ?, status = ?, summary_json = ?, completed_at = ?
+       WHERE id = ?`
+    ).run(
+      assetCount,
+      pointCount,
+      telemetryEventCount,
+      "failed",
+      JSON.stringify({
+        gatewayId: gateway.id,
+        assetCount,
+        pointCount,
+        telemetryEventCount,
+        error: error instanceof Error ? error.message : String(error)
+      }),
+      new Date().toISOString(),
+      discoveryRunId
+    );
+    throw error;
+  }
+}
+
+export function ingestBacnetGatewayTelemetry(input: {
+  gatewayId: string;
+  token: string;
+  observedAt?: string;
+  events: Array<{
+    assetKey?: string;
+    pointKey?: string;
+    objectIdentifier?: string;
+    value: string | number;
+    unit?: string;
+    qualityFlag?: string;
+  }>;
+}) {
+  const gateway = requireGatewayToken(input.gatewayId, input.token);
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  let acceptedCount = 0;
+  let ignoredCount = 0;
+  const touchedBuildings = new Set<string>();
+
+  for (const event of input.events) {
+    const resolved = resolveGatewayPoint({
+      gatewayId: input.gatewayId,
+      assetKey: normalizeSourceKey(event.assetKey),
+      pointKey: normalizeSourceKey(event.pointKey),
+      objectIdentifier: event.objectIdentifier
+    });
+
+    if (!resolved) {
+      ignoredCount += 1;
+      continue;
+    }
+
+    insertTelemetryEvent({
+      buildingId: resolved.buildingId,
+      systemId: resolved.assetId,
+      pointId: resolved.pointId,
+      timestamp: observedAt,
+      valueNumeric: typeof event.value === "number" ? event.value : null,
+      valueText: typeof event.value === "string" ? event.value : null,
+      unit: event.unit ?? null,
+      qualityFlag: event.qualityFlag ?? "ok"
+    });
+    acceptedCount += 1;
+    touchedBuildings.add(resolved.buildingId);
+  }
+
+  const db = getDatabase();
+  db.prepare(`UPDATE bacnet_gateways SET status = ?, last_seen_at = ? WHERE id = ?`).run(
+    "online",
+    observedAt,
+    gateway.id
+  );
+
+  normalizeTelemetryEvents();
+  for (const buildingId of touchedBuildings) {
+    evaluateMonitoringRulesForBuilding(buildingId);
+  }
+
+  return {
+    gatewayId: gateway.id,
+    observedAt,
+    acceptedCount,
+    ignoredCount
+  };
+}
+
+function getGatewayExecutionContextForPoint(pointId: string) {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT bp.id AS point_id, bp.object_identifier, bp.object_name, bp.source_point_key,
+              ma.id AS asset_id, ma.building_id, ma.source_gateway_id, ma.source_asset_key,
+              gw.name AS gateway_name, gw.runtime_mode
+       FROM bas_points bp
+       INNER JOIN monitoring_assets ma ON ma.id = bp.monitoring_asset_id
+       LEFT JOIN bacnet_gateways gw ON gw.id = ma.source_gateway_id
+       WHERE bp.id = ?`
+    )
+    .get(pointId) as
+    | {
+        point_id: string;
+        object_identifier: string;
+        object_name: string;
+        source_point_key: string | null;
+        asset_id: string;
+        building_id: string;
+        source_gateway_id: string | null;
+        source_asset_key: string | null;
+        gateway_name: string | null;
+        runtime_mode: string | null;
+      }
+    | undefined;
+
+  return row;
+}
+
+function queueGatewayCommandDispatch(commandId: string) {
+  const db = getDatabase();
+  const command = getControlCommandById(commandId);
+
+  if (!command) {
+    return null;
+  }
+
+  const pointContext = getGatewayExecutionContextForPoint(command.pointId);
+  if (!pointContext?.source_gateway_id) {
+    return null;
+  }
+
+  const existing = db
+    .prepare(
+      `SELECT id
+       FROM gateway_command_dispatches
+       WHERE command_id = ?
+       LIMIT 1`
+    )
+    .get(commandId) as { id: string } | undefined;
+  const dispatchId = existing?.id ?? makeId("dispatch");
+  const payloadJson = JSON.stringify({
+    commandId,
+    buildingId: command.buildingId,
+    pointId: command.pointId,
+    pointKey: pointContext.source_point_key ?? null,
+    assetKey: pointContext.source_asset_key ?? null,
+    objectIdentifier: pointContext.object_identifier,
+    objectName: pointContext.object_name,
+    commandType: command.commandType,
+    requestedValue: command.requestedValue,
+    expiresAt: command.expiresAt ?? null
+  });
+
+  if (existing) {
+    db.prepare(
+      `UPDATE gateway_command_dispatches
+       SET status = ?, payload_json = ?, error_message = NULL
+       WHERE id = ?`
+    ).run("pending", payloadJson, dispatchId);
+  } else {
+    db.prepare(
+      `INSERT INTO gateway_command_dispatches (
+        id, gateway_id, command_id, building_id, point_id, status, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      dispatchId,
+      pointContext.source_gateway_id,
+      commandId,
+      command.buildingId,
+      command.pointId,
+      "pending",
+      payloadJson
+    );
+  }
+
+  db.prepare(`UPDATE control_commands SET status = ?, execution_notes = ? WHERE id = ?`).run(
+    "dispatch_pending",
+    `Queued for gateway runtime ${pointContext.gateway_name ?? pointContext.source_gateway_id}.`,
+    commandId
+  );
+
+  recordAuditEvent({
+    buildingId: command.buildingId,
+    entityType: "gateway_command_dispatch",
+    entityId: dispatchId,
+    action: "gateway_dispatch_queued",
+    actorType: "system",
+    summary: `${command.commandType} command was queued for gateway dispatch.`,
+    metadataJson: payloadJson
+  });
+
+  return {
+    dispatchId,
+    gatewayId: pointContext.source_gateway_id,
+    runtimeMode: pointContext.runtime_mode ?? "outbox"
+  };
+}
+
+function deliverPendingGatewayCommandDispatches(gatewayId: string, deliveryTime = new Date().toISOString()) {
+  const db = getDatabase();
+  const pending = db
+    .prepare(
+      `SELECT id, gateway_id, command_id, building_id, point_id, status, payload_json, response_json, error_message, created_at, dispatched_at, acknowledged_at,
+              delivery_attempt_count, last_delivery_attempt_at
+       FROM gateway_command_dispatches
+       WHERE gateway_id = ? AND status = 'pending'
+       ORDER BY created_at ASC`
+    )
+    .all(gatewayId) as Array<{
+      id: string;
+      gateway_id: string;
+      command_id: string;
+      building_id: string;
+      point_id: string;
+      status: string;
+      payload_json: string;
+      response_json: string | null;
+      error_message: string | null;
+      created_at: string;
+      dispatched_at: string | null;
+      acknowledged_at: string | null;
+      delivery_attempt_count: number;
+      last_delivery_attempt_at: string | null;
+    }>;
+
+  if (pending.length > 0) {
+    db.prepare(
+      `UPDATE gateway_command_dispatches
+       SET status = 'delivered',
+           dispatched_at = COALESCE(dispatched_at, ?),
+           delivery_attempt_count = delivery_attempt_count + 1,
+           last_delivery_attempt_at = ?
+       WHERE gateway_id = ? AND status = 'pending'`
+    ).run(deliveryTime, deliveryTime, gatewayId);
+  }
+
+  return pending.map((row) => ({
+    id: row.id,
+    gatewayId: row.gateway_id,
+    commandId: row.command_id,
+    buildingId: row.building_id,
+    pointId: row.point_id,
+    status: "delivered",
+    payloadJson: row.payload_json,
+    responseJson: row.response_json ?? undefined,
+    errorMessage: row.error_message ?? undefined,
+    createdAt: row.created_at,
+    dispatchedAt: row.dispatched_at ?? deliveryTime,
+    acknowledgedAt: row.acknowledged_at ?? undefined,
+    deliveryAttemptCount: row.delivery_attempt_count + 1,
+    lastDeliveryAttemptAt: deliveryTime
+  } satisfies GatewayCommandDispatchRecord));
+}
+
+export function heartbeatGatewayRuntime(input: {
+  gatewayId: string;
+  token: string;
+  observedAt?: string;
+  agentVersion?: string;
+  status?: string;
+  queueDepth?: number;
+  telemetryLagSeconds?: number;
+  metadata?: Record<string, unknown>;
+}) {
+  const gateway = requireGatewayToken(input.gatewayId, input.token);
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const heartbeatStatus = input.status?.trim() || "healthy";
+  const db = getDatabase();
+  const runtimeMetadata = updateGatewayRuntimeMetadata(input.gatewayId, {
+    queueDepth: input.queueDepth ?? null,
+    telemetryLagSeconds: input.telemetryLagSeconds ?? null,
+    ...(input.metadata ?? {})
+  });
+
+  db.prepare(
+    `UPDATE bacnet_gateways
+     SET status = ?, last_seen_at = ?, last_heartbeat_at = ?, heartbeat_status = ?, agent_version = COALESCE(?, agent_version), runtime_metadata_json = COALESCE(?, runtime_metadata_json)
+     WHERE id = ?`
+  ).run(
+    heartbeatStatus === "stale" ? "stale" : "online",
+    observedAt,
+    observedAt,
+    heartbeatStatus,
+    input.agentVersion ?? null,
+    runtimeMetadata ? JSON.stringify(runtimeMetadata) : null,
+    input.gatewayId
+  );
+
+  const refreshed = getBacnetGatewayById(gateway.id) ?? gateway;
+
+  return {
+    observedAt,
+    ...buildGatewayRuntimeState(refreshed, observedAt)
+  };
+}
+
+export function startGatewayPollCycle(input: {
+  gatewayId: string;
+  token: string;
+  observedAt?: string;
+  reason?: string;
+  includeCommands?: boolean;
+}) {
+  const gateway = requireGatewayToken(input.gatewayId, input.token);
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const pollIntervalSeconds = normalizePollIntervalSeconds(gateway.pollIntervalSeconds);
+  const db = getDatabase();
+  const nextPollDueAt = addSecondsToIso(observedAt, pollIntervalSeconds);
+
+  db.prepare(
+    `UPDATE bacnet_gateways
+     SET status = ?, last_seen_at = ?, last_heartbeat_at = COALESCE(last_heartbeat_at, ?), heartbeat_status = CASE WHEN heartbeat_status = 'unknown' THEN 'healthy' ELSE heartbeat_status END,
+         last_poll_requested_at = ?, next_poll_due_at = ?
+     WHERE id = ?`
+  ).run("online", observedAt, observedAt, observedAt, nextPollDueAt, input.gatewayId);
+
+  if (input.reason) {
+    updateGatewayRuntimeMetadata(input.gatewayId, { lastPollReason: input.reason });
+  }
+
+  const commands = input.includeCommands === false ? [] : deliverPendingGatewayCommandDispatches(input.gatewayId, observedAt);
+  const refreshed = getBacnetGatewayById(input.gatewayId) ?? gateway;
+
+  return {
+    observedAt,
+    commands,
+    shouldPollTelemetry: true,
+    shouldPollDiscovery: !refreshed.lastDiscoveryAt,
+    ...buildGatewayRuntimeState(refreshed, observedAt)
+  };
+}
+
+export function completeGatewayPollCycle(input: {
+  gatewayId: string;
+  token: string;
+  observedAt?: string;
+  telemetryAcceptedCount?: number;
+  telemetryIgnoredCount?: number;
+  discoveryAssetCount?: number;
+  notes?: string;
+}) {
+  const gateway = requireGatewayToken(input.gatewayId, input.token);
+  const observedAt = input.observedAt ?? new Date().toISOString();
+  const pollIntervalSeconds = normalizePollIntervalSeconds(gateway.pollIntervalSeconds);
+  const nextPollDueAt = addSecondsToIso(observedAt, pollIntervalSeconds);
+  const runtimeMetadata = updateGatewayRuntimeMetadata(input.gatewayId, {
+    lastPollNotes: input.notes ?? null,
+    lastPollTelemetryAcceptedCount: input.telemetryAcceptedCount ?? 0,
+    lastPollTelemetryIgnoredCount: input.telemetryIgnoredCount ?? 0,
+    lastPollDiscoveryAssetCount: input.discoveryAssetCount ?? 0
+  });
+
+  getDatabase()
+    .prepare(
+      `UPDATE bacnet_gateways
+       SET status = ?, last_seen_at = ?, last_poll_completed_at = ?, next_poll_due_at = ?, runtime_metadata_json = COALESCE(?, runtime_metadata_json)
+       WHERE id = ?`
+    )
+    .run("online", observedAt, observedAt, nextPollDueAt, runtimeMetadata ? JSON.stringify(runtimeMetadata) : null, input.gatewayId);
+
+  const refreshed = getBacnetGatewayById(input.gatewayId) ?? gateway;
+
+  return {
+    observedAt,
+    ...buildGatewayRuntimeState(refreshed, observedAt)
+  };
+}
+
+export function listPendingGatewayCommandDispatches(input: { gatewayId: string; token: string }) {
+  requireGatewayToken(input.gatewayId, input.token);
+  return deliverPendingGatewayCommandDispatches(input.gatewayId);
+}
+
+export function acknowledgeGatewayCommandDispatch(input: {
+  gatewayId: string;
+  token: string;
+  dispatchId: string;
+  success: boolean;
+  responseJson?: string;
+  errorMessage?: string;
+  appliedValue?: string;
+}) {
+  const gateway = requireGatewayToken(input.gatewayId, input.token);
+  const db = getDatabase();
+  const dispatch = db
+    .prepare(
+      `SELECT id, gateway_id, command_id, building_id, point_id, status
+       FROM gateway_command_dispatches
+       WHERE id = ? AND gateway_id = ?
+       LIMIT 1`
+    )
+    .get(input.dispatchId, input.gatewayId) as
+    | {
+        id: string;
+        gateway_id: string;
+        command_id: string;
+        building_id: string;
+        point_id: string;
+        status: string;
+      }
+    | undefined;
+
+  if (!dispatch) {
+    throw new Error(`Dispatch ${input.dispatchId} not found for gateway ${input.gatewayId}.`);
+  }
+
+  const acknowledgedAt = new Date().toISOString();
+  db.prepare(
+    `UPDATE gateway_command_dispatches
+     SET status = ?, response_json = ?, error_message = ?, acknowledged_at = ?, dispatched_at = COALESCE(dispatched_at, ?)
+     WHERE id = ?`
+  ).run(
+    input.success ? "acknowledged" : "failed",
+    input.responseJson ?? null,
+    input.success ? null : input.errorMessage ?? "Gateway runtime reported a failure.",
+    acknowledgedAt,
+    acknowledgedAt,
+    input.dispatchId
+  );
+
+  if (input.success) {
+    applyPointValue(dispatch.point_id, input.appliedValue ?? getControlCommandById(dispatch.command_id)?.requestedValue ?? "auto", `gateway-dispatch:${dispatch.id}`);
+    db.prepare(
+      `UPDATE control_commands
+       SET status = ?, executed_at = COALESCE(executed_at, ?), execution_notes = ?
+       WHERE id = ?`
+    ).run(
+      "executed",
+      acknowledgedAt,
+      `Gateway runtime ${gateway.name} acknowledged command dispatch.`,
+      dispatch.command_id
+    );
+  } else {
+    db.prepare(
+      `UPDATE control_commands
+       SET status = ?, execution_notes = ?
+       WHERE id = ?`
+    ).run("dispatch_failed", input.errorMessage ?? "Gateway runtime reported a failure.", dispatch.command_id);
+  }
+
+  recordAuditEvent({
+    buildingId: dispatch.building_id,
+    entityType: "gateway_command_dispatch",
+    entityId: dispatch.id,
+    action: input.success ? "gateway_dispatch_acknowledged" : "gateway_dispatch_failed",
+    actorType: "system",
+    summary: input.success
+      ? `Gateway runtime acknowledged dispatch ${dispatch.id}.`
+      : `Gateway runtime failed dispatch ${dispatch.id}.`,
+    metadataJson: JSON.stringify({
+      commandId: dispatch.command_id,
+      responseJson: input.responseJson ?? null,
+      errorMessage: input.errorMessage ?? null
+    })
+  });
+
+  return listGatewayCommandDispatchesByBuildingId(dispatch.building_id).find((item) => item.id === dispatch.id) ?? null;
+}
+
+export function processPendingGatewayCommandDispatches(gatewayId?: string) {
+  const db = getDatabase();
+  const reconciliation = reconcileGatewayCommandDispatches();
+  const gateways = gatewayId
+    ? [getBacnetGatewayById(gatewayId)].filter((gateway): gateway is BacnetGatewayRecord => Boolean(gateway))
+    : (db
+        .prepare(`SELECT id FROM bacnet_gateways WHERE status IN ('configured', 'online') ORDER BY id ASC`)
+        .all() as Array<{ id: string }>)
+        .map((row) => getBacnetGatewayById(row.id))
+        .filter((gateway): gateway is BacnetGatewayRecord => Boolean(gateway));
+  let processedCount = 0;
+
+  for (const gateway of gateways) {
+    if (gateway.runtimeMode !== "loopback") {
+      continue;
+    }
+
+    const pending = db
+      .prepare(
+        `SELECT id
+         FROM gateway_command_dispatches
+         WHERE gateway_id = ? AND status = 'pending'
+         ORDER BY created_at ASC`
+      )
+      .all(gateway.id) as Array<{ id: string }>;
+
+    for (const dispatch of pending) {
+      acknowledgeGatewayCommandDispatch({
+        gatewayId: gateway.id,
+        token: gateway.ingestToken ?? "",
+        dispatchId: dispatch.id,
+        success: true,
+        responseJson: JSON.stringify({ mode: "loopback" })
+      });
+      processedCount += 1;
+    }
+  }
+
+  return {
+    processedCount,
+    requeuedCount: reconciliation.requeuedCount,
+    deadLetterCount: reconciliation.deadLetterCount
+  };
+}
+
+export function reconcileGatewayCommandDispatches(referenceTime = new Date().toISOString()) {
+  const db = getDatabase();
+  const gateways = (db
+    .prepare(`SELECT id FROM bacnet_gateways ORDER BY created_at ASC`)
+    .all() as Array<{ id: string }>)
+    .map((row) => getBacnetGatewayById(row.id))
+    .filter((gateway): gateway is BacnetGatewayRecord => Boolean(gateway));
+  let requeuedCount = 0;
+  let deadLetterCount = 0;
+
+  for (const gateway of gateways) {
+    const policy = getGatewayDispatchPolicy(gateway);
+    const delivered = db
+      .prepare(
+        `SELECT id, command_id, building_id, status, delivery_attempt_count, last_delivery_attempt_at, dispatched_at
+         FROM gateway_command_dispatches
+         WHERE gateway_id = ? AND status = 'delivered'
+         ORDER BY created_at ASC`
+      )
+      .all(gateway.id) as Array<{
+        id: string;
+        command_id: string;
+        building_id: string;
+        status: string;
+        delivery_attempt_count: number;
+        last_delivery_attempt_at: string | null;
+        dispatched_at: string | null;
+      }>;
+
+    for (const dispatch of delivered) {
+      const lastAttemptAt = dispatch.last_delivery_attempt_at ?? dispatch.dispatched_at;
+      if (!lastAttemptAt) {
+        continue;
+      }
+
+      const ageMs = Date.parse(referenceTime) - Date.parse(lastAttemptAt);
+      if (!Number.isFinite(ageMs) || ageMs < policy.timeoutSeconds * 1000) {
+        continue;
+      }
+
+      if (dispatch.delivery_attempt_count >= policy.maxAttempts) {
+        db.prepare(
+          `UPDATE gateway_command_dispatches
+           SET status = ?, error_message = ?, response_json = COALESCE(response_json, ?)
+           WHERE id = ?`
+        ).run(
+          "dead_letter",
+          `Dispatch timed out after ${dispatch.delivery_attempt_count} delivery attempt(s).`,
+          JSON.stringify({ timeoutSeconds: policy.timeoutSeconds, maxAttempts: policy.maxAttempts }),
+          dispatch.id
+        );
+
+        db.prepare(`UPDATE control_commands SET status = ?, execution_notes = ? WHERE id = ?`).run(
+          "dispatch_failed",
+          `Gateway dispatch timed out after ${dispatch.delivery_attempt_count} delivery attempt(s) and moved to dead letter.`,
+          dispatch.command_id
+        );
+
+        recordAuditEvent({
+          buildingId: dispatch.building_id,
+          entityType: "gateway_command_dispatch",
+          entityId: dispatch.id,
+          action: "gateway_dispatch_dead_lettered",
+          actorType: "system",
+          summary: `Gateway dispatch ${dispatch.id} moved to dead letter after repeated timeouts.`,
+          metadataJson: JSON.stringify({
+            timeoutSeconds: policy.timeoutSeconds,
+            maxAttempts: policy.maxAttempts,
+            deliveryAttemptCount: dispatch.delivery_attempt_count
+          })
+        });
+
+        deadLetterCount += 1;
+      } else {
+        db.prepare(
+          `UPDATE gateway_command_dispatches
+           SET status = ?, error_message = ?
+           WHERE id = ?`
+        ).run(
+          "pending",
+          `Dispatch timed out waiting for acknowledgement and was re-queued at ${referenceTime}.`,
+          dispatch.id
+        );
+
+        db.prepare(`UPDATE control_commands SET status = ?, execution_notes = ? WHERE id = ?`).run(
+          "dispatch_pending",
+          `Gateway dispatch timed out waiting for acknowledgement and was re-queued (${dispatch.delivery_attempt_count}/${policy.maxAttempts}).`,
+          dispatch.command_id
+        );
+
+        recordAuditEvent({
+          buildingId: dispatch.building_id,
+          entityType: "gateway_command_dispatch",
+          entityId: dispatch.id,
+          action: "gateway_dispatch_requeued",
+          actorType: "system",
+          summary: `Gateway dispatch ${dispatch.id} timed out and was re-queued.`,
+          metadataJson: JSON.stringify({
+            timeoutSeconds: policy.timeoutSeconds,
+            maxAttempts: policy.maxAttempts,
+            deliveryAttemptCount: dispatch.delivery_attempt_count
+          })
+        });
+
+        requeuedCount += 1;
+      }
+    }
+  }
+
+  return {
+    requeuedCount,
+    deadLetterCount
+  };
+}
+
+export function refreshGatewayRuntimeHealth(referenceTime = new Date().toISOString()) {
+  const db = getDatabase();
+  const gateways = (db
+    .prepare(
+      `SELECT id
+       FROM bacnet_gateways
+       ORDER BY created_at ASC`
+    )
+    .all() as Array<{ id: string }>)
+    .map((row) => getBacnetGatewayById(row.id))
+    .filter((gateway): gateway is BacnetGatewayRecord => Boolean(gateway));
+  let onlineCount = 0;
+  let staleCount = 0;
+
+  for (const gateway of gateways) {
+    if (!gateway.lastHeartbeatAt) {
+      continue;
+    }
+
+    const interval = normalizePollIntervalSeconds(gateway.pollIntervalSeconds);
+    const staleAfterMs = Math.max(interval * 3 * 1000, 15 * 60 * 1000);
+    const ageMs = Date.parse(referenceTime) - Date.parse(gateway.lastHeartbeatAt);
+    const heartbeatStatus = ageMs > staleAfterMs ? "stale" : "healthy";
+    const gatewayStatus = heartbeatStatus === "stale" ? "stale" : "online";
+    db.prepare(`UPDATE bacnet_gateways SET heartbeat_status = ?, status = ? WHERE id = ?`).run(
+      heartbeatStatus,
+      gatewayStatus,
+      gateway.id
+    );
+
+    if (heartbeatStatus === "stale") {
+      staleCount += 1;
+    } else {
+      onlineCount += 1;
+    }
+  }
+
+  return {
+    onlineCount,
+    staleCount
+  };
+}
+
 export function getMonitoringWorkspaceByBuildingId(buildingId: string): MonitoringWorkspace {
   return {
+    gateways: listBacnetGatewaysByBuildingId(buildingId),
+    assets: listMonitoringAssetsByBuildingId(buildingId),
     issues: getMonitoringIssuesByBuildingId(buildingId),
     basPoints: listBasPointsByBuildingId(buildingId),
     telemetryEvents: listTelemetryEventsByBuildingId(buildingId),
-    recommendationActions: listRecommendationActionsByBuildingId(buildingId)
+    recommendationActions: listRecommendationActionsByBuildingId(buildingId),
+    discoveryRuns: listGatewayDiscoveryRunsByBuildingId(buildingId),
+    dispatches: listGatewayCommandDispatchesByBuildingId(buildingId)
   };
 }
 
 export function startDiscoveryRun(buildingId: string): DiscoveryRunRecord {
   const db = getDatabase();
+  const gateway = listBacnetGatewaysByBuildingId(buildingId)[0];
+
+  if (gateway) {
+    recordAuditEvent({
+      buildingId,
+      entityType: "discovery_run",
+      entityId: `discover_${buildingId}`,
+      action: "bacnet_discovery_requested",
+      actorType: "operator",
+      summary: `Gateway-backed discovery was requested for ${gateway.name}.`,
+      metadataJson: JSON.stringify({ gatewayId: gateway.id })
+    });
+
+    return {
+      id: `discover_${buildingId}`,
+      buildingId,
+      assetId: "",
+      pointId: "",
+      gatewayId: gateway.id,
+      status: "queued"
+    };
+  }
+
   const existingAsset = db
     .prepare(
       `SELECT ma.id AS asset_id
@@ -2823,6 +5682,7 @@ export function startDiscoveryRun(buildingId: string): DiscoveryRunRecord {
     buildingId,
     assetId,
     pointId,
+    gatewayId: undefined,
     status: existingAsset ? "existing" : "queued"
   };
 }
@@ -2958,6 +5818,10 @@ export function listControlCommands(): ControlCommandRecord[] {
         status: typedRow.status
       };
     });
+}
+
+export function getControlCommandById(commandId: string): ControlCommandRecord | null {
+  return listControlCommands().find((command) => command.id === commandId) ?? null;
 }
 
 export function createControlCommand(input: {
@@ -3103,6 +5967,16 @@ export function approveControlCommand(commandId: string) {
     summary: `${existing.command_type} command was approved for point ${existing.point_id}.`,
     metadataJson: JSON.stringify({ requestedValue: existing.requested_value, approvedAt })
   });
+
+  const dispatch = queueGatewayCommandDispatch(commandId);
+
+  if (dispatch) {
+    if (dispatch.runtimeMode === "loopback") {
+      processPendingGatewayCommandDispatches(dispatch.gatewayId);
+    }
+
+    return getControlCommandById(commandId);
+  }
 
   return executeApprovedControlCommand(commandId);
 }

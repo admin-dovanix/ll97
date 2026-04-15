@@ -8,6 +8,8 @@ import { telemetryNormalizationJob } from "./jobs/telemetry-normalization/index.
 import { bacnetDiscoveryJob } from "./jobs/bacnet-discovery/index.js";
 import { issueDetectionJob } from "./jobs/issue-detection/index.js";
 import { commandExpiryJob } from "./jobs/command-expiry/index.js";
+import { gatewayCommandDispatchJob } from "./jobs/gateway-command-dispatch/index.js";
+import { gatewayRuntimeHealthJob } from "./jobs/gateway-runtime-health/index.js";
 
 const jobs = [
   buildingImportJob,
@@ -17,7 +19,9 @@ const jobs = [
   telemetryNormalizationJob,
   bacnetDiscoveryJob,
   issueDetectionJob,
-  commandExpiryJob
+  commandExpiryJob,
+  gatewayCommandDispatchJob,
+  gatewayRuntimeHealthJob
 ];
 
 const requestedJobName = process.argv[2];

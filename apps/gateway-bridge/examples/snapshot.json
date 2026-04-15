@@ -1,0 +1,45 @@
+{
+  "observedAt": "2026-04-15T18:00:00Z",
+  "assets": [
+    {
+      "assetKey": "corridor_ahu",
+      "systemName": "Corridor AHU",
+      "assetType": "ahu",
+      "protocol": "BACnet/IP",
+      "vendor": "Bridge File Feed",
+      "location": "Roof",
+      "status": "active",
+      "points": [
+        {
+          "assetKey": "corridor_ahu",
+          "pointKey": "corridor_schedule",
+          "objectIdentifier": "schedule,11",
+          "objectName": "Corridor AHU Schedule",
+          "canonicalPointType": "schedule",
+          "unit": "enum",
+          "isWritable": true,
+          "isWhitelisted": true,
+          "presentValue": "occupied"
+        },
+        {
+          "assetKey": "corridor_ahu",
+          "pointKey": "corridor_co2",
+          "objectIdentifier": "analog-input,18",
+          "objectName": "Corridor CO2",
+          "canonicalPointType": "co2",
+          "unit": "ppm",
+          "presentValue": 735
+        },
+        {
+          "assetKey": "corridor_ahu",
+          "pointKey": "corridor_temperature",
+          "objectIdentifier": "analog-input,19",
+          "objectName": "Corridor Temperature",
+          "canonicalPointType": "temperature",
+          "unit": "F",
+          "presentValue": 69.4
+        }
+      ]
+    }
+  ]
+}

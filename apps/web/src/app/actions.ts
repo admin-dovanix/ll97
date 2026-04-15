@@ -1,20 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { appRoles, requireRole, setCurrentRole } from "../lib/auth";
+import { redirect } from "next/navigation";
+import {
+  clearCurrentSession,
+  loginWithEmail,
+  requireActiveRole,
+  requireBuildingAccess,
+  requirePortfolioAccess,
+  switchCurrentMembership
+} from "../lib/auth";
 import {
   attachDocumentEvidence,
   autoMatchPublicBuildingRecord,
   approveControlCommand,
+  createPortfolioMembership,
   createControlCommand,
   createDocument,
   createPortfolio,
   createRecommendationAction,
   generateComplianceRequirements,
+  getControlCommandById,
   ingestSensorReading,
+  ingestBacnetGatewayDiscoverySnapshot,
   importBuildings,
+  replayMonitoringScenario,
+  registerBacnetGateway,
   resolveCoverageRecord,
   startDiscoveryRun,
+  updateBacnetGatewayConfiguration,
   updateRecommendationActionStatus,
   updateBasPointMapping
 } from "@airwise/database";
@@ -34,23 +48,40 @@ function optionalString(formData: FormData, key: string) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function optionalNumber(formData: FormData, key: string) {
+  const value = optionalString(formData, key);
+  if (!value) {
+    return undefined;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
 export async function createPortfolioAction(formData: FormData) {
-  await requireRole(["owner"]);
-  createPortfolio({
+  const { session } = await requireActiveRole(["owner"]);
+  const portfolio = createPortfolio({
     name: requireString(formData, "name"),
     ownerName: optionalString(formData, "ownerName")
   });
+  const membershipId = createPortfolioMembership({
+    userId: session.user.id,
+    portfolioId: portfolio.id,
+    role: "owner"
+  });
+  await switchCurrentMembership(membershipId);
 
   revalidatePath("/");
   revalidatePath("/portfolios");
 }
 
 export async function importBuildingAction(formData: FormData) {
-  await requireRole(["owner"]);
+  const portfolioId = requireString(formData, "portfolioId");
+  await requirePortfolioAccess(portfolioId, ["owner"]);
   const articleValue = optionalString(formData, "article");
   const pathwayValue = optionalString(formData, "pathway");
 
-  importBuildings(requireString(formData, "portfolioId"), [
+  importBuildings(portfolioId, [
     {
       name: requireString(formData, "name"),
       addressLine1: requireString(formData, "addressLine1"),
@@ -75,8 +106,8 @@ export async function importBuildingAction(formData: FormData) {
 }
 
 export async function uploadDocumentAction(formData: FormData) {
-  await requireRole(["owner", "rdp", "rcxa"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
 
   createDocument({
     buildingId,
@@ -89,8 +120,8 @@ export async function uploadDocumentAction(formData: FormData) {
 }
 
 export async function attachEvidenceAction(formData: FormData) {
-  await requireRole(["owner", "rdp", "rcxa"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
   const linkStatus = optionalString(formData, "linkStatus");
 
   attachDocumentEvidence({
@@ -108,11 +139,11 @@ export async function attachEvidenceAction(formData: FormData) {
 }
 
 export async function createCommandAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
   const target = optionalString(formData, "target");
   const [targetBuildingId, targetPointId] = target?.includes("::") ? target.split("::", 2) : [];
   const buildingId = targetBuildingId ?? requireString(formData, "buildingId");
   const pointId = targetPointId ?? requireString(formData, "pointId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
 
   createControlCommand({
     buildingId,
@@ -128,14 +159,21 @@ export async function createCommandAction(formData: FormData) {
 }
 
 export async function approveCommandAction(formData: FormData) {
-  await requireRole(["owner"]);
-  approveControlCommand(requireString(formData, "commandId"));
+  const commandId = requireString(formData, "commandId");
+  const command = getControlCommandById(commandId);
+
+  if (!command) {
+    throw new Error(`Command ${commandId} not found.`);
+  }
+
+  await requireBuildingAccess(command.buildingId, ["owner"]);
+  approveControlCommand(commandId);
   revalidatePath("/commands");
 }
 
 export async function resolveCoverageAction(formData: FormData) {
-  await requireRole(["owner"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner"]);
   resolveCoverageRecord(buildingId, Number(optionalString(formData, "filingYear") ?? "2026"));
   revalidatePath(`/buildings/${buildingId}/overview`);
   revalidatePath(`/buildings/${buildingId}/compliance`);
@@ -143,24 +181,148 @@ export async function resolveCoverageAction(formData: FormData) {
 }
 
 export async function generateRequirementsAction(formData: FormData) {
-  await requireRole(["owner", "rdp"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp"]);
   generateComplianceRequirements(buildingId, Number(optionalString(formData, "reportingYear") ?? "2026"));
   revalidatePath(`/buildings/${buildingId}/compliance`);
 }
 
 export async function startDiscoveryRunAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
   startDiscoveryRun(buildingId);
   revalidatePath(`/buildings/${buildingId}/monitoring`);
   revalidatePath(`/buildings/${buildingId}/recommendations`);
   revalidatePath("/commands");
 }
 
-export async function ingestTelemetryAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
+export async function registerBacnetGatewayAction(formData: FormData) {
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
+
+  registerBacnetGateway({
+    buildingId,
+    name: requireString(formData, "name"),
+    protocol: optionalString(formData, "protocol"),
+    vendor: optionalString(formData, "vendor"),
+    host: optionalString(formData, "host"),
+    port: optionalNumber(formData, "port"),
+    authType: optionalString(formData, "authType"),
+    runtimeMode: optionalString(formData, "runtimeMode"),
+    commandEndpoint: optionalString(formData, "commandEndpoint"),
+    pollIntervalSeconds: optionalNumber(formData, "pollIntervalSeconds")
+  });
+
+  revalidatePath(`/buildings/${buildingId}/monitoring`);
+}
+
+export async function updateGatewayConfigAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
+
+  updateBacnetGatewayConfiguration({
+    gatewayId: requireString(formData, "gatewayId"),
+    bridgeBackend: optionalString(formData, "bridgeBackend"),
+    sdkModulePath: optionalString(formData, "sdkModulePath"),
+    sdkExportName: optionalString(formData, "sdkExportName"),
+    sdkConfigJson: optionalString(formData, "sdkConfigJson"),
+    dispatchTimeoutSeconds: optionalNumber(formData, "dispatchTimeoutSeconds"),
+    maxDispatchAttempts: optionalNumber(formData, "maxDispatchAttempts")
+  });
+
+  revalidatePath(`/buildings/${buildingId}/monitoring`);
+  revalidatePath("/commands");
+}
+
+export async function ingestGatewaySnapshotAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
+  const snapshotRaw = requireString(formData, "snapshotJson");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(snapshotRaw);
+  } catch {
+    throw new Error("Snapshot JSON could not be parsed.");
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Snapshot JSON must be an object.");
+  }
+
+  const snapshot = parsed as {
+    gatewayId?: string;
+    gateway?: {
+      name?: string;
+      protocol?: string;
+      vendor?: string;
+      host?: string;
+      port?: number;
+      authType?: string;
+      metadataJson?: string;
+    };
+    observedAt?: string;
+    assets?: Array<{
+      assetKey?: string;
+      systemName: string;
+      assetType?: string;
+      protocol?: string;
+      vendor?: string;
+      location?: string;
+      status?: string;
+      metadata?: Record<string, unknown>;
+      points: Array<{
+        pointKey?: string;
+        objectIdentifier: string;
+        objectName: string;
+        canonicalPointType?: string;
+        unit?: string;
+        isWritable?: boolean;
+        isWhitelisted?: boolean;
+        safetyCategory?: string;
+        presentValue?: string | number;
+        qualityFlag?: string;
+        metadata?: Record<string, unknown>;
+      }>;
+    }>;
+  };
+
+  if (!Array.isArray(snapshot.assets) || snapshot.assets.length === 0) {
+    throw new Error("Snapshot JSON must include a non-empty assets array.");
+  }
+
+  ingestBacnetGatewayDiscoverySnapshot({
+    buildingId,
+    gatewayId: snapshot.gatewayId,
+    gateway: snapshot.gateway,
+    observedAt: snapshot.observedAt,
+    assets: snapshot.assets
+  });
+
+  revalidatePath(`/buildings/${buildingId}/monitoring`);
+  revalidatePath(`/buildings/${buildingId}/recommendations`);
+  revalidatePath("/commands");
+}
+
+export async function replayMonitoringScenarioAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
+
+  replayMonitoringScenario({
+    buildingId,
+    gatewayId: optionalString(formData, "gatewayId"),
+    scenario: optionalString(formData, "scenario"),
+    observedAt: optionalString(formData, "observedAt")
+  });
+
+  revalidatePath(`/buildings/${buildingId}/monitoring`);
+  revalidatePath(`/buildings/${buildingId}/recommendations`);
+  revalidatePath("/commands");
+}
+
+export async function ingestTelemetryAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
   const rawValue = requireString(formData, "value");
   const numericValue = Number(rawValue);
 
@@ -179,8 +341,8 @@ export async function ingestTelemetryAction(formData: FormData) {
 }
 
 export async function updateBasPointAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
   const whitelisted = optionalString(formData, "isWhitelisted");
 
   updateBasPointMapping({
@@ -195,8 +357,8 @@ export async function updateBasPointAction(formData: FormData) {
 }
 
 export async function createRecommendationActionAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
 
   createRecommendationAction({
     recommendationId: requireString(formData, "recommendationId"),
@@ -210,8 +372,8 @@ export async function createRecommendationActionAction(formData: FormData) {
 }
 
 export async function updateRecommendationActionStatusAction(formData: FormData) {
-  await requireRole(["owner", "operator"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "operator"]);
   const actionStatus = requireString(formData, "actionStatus");
 
   updateRecommendationActionStatus({
@@ -231,19 +393,29 @@ export async function updateRecommendationActionStatusAction(formData: FormData)
 }
 
 export async function autoMatchPublicRecordAction(formData: FormData) {
-  await requireRole(["owner"]);
   const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner"]);
   autoMatchPublicBuildingRecord(buildingId);
   revalidatePath(`/buildings/${buildingId}/overview`);
 }
 
-export async function setDevRoleAction(formData: FormData) {
-  const role = requireString(formData, "role");
+export async function loginAction(formData: FormData) {
+  const email = requireString(formData, "email");
+  const membershipId = optionalString(formData, "membershipId");
 
-  if (!appRoles.includes(role as (typeof appRoles)[number])) {
-    throw new Error(`Unsupported role: ${role}`);
-  }
-
-  await setCurrentRole(role as (typeof appRoles)[number]);
+  await loginWithEmail(email, membershipId);
   revalidatePath("/");
+  redirect("/");
+}
+
+export async function switchMembershipAction(formData: FormData) {
+  await switchCurrentMembership(requireString(formData, "membershipId"));
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function logoutAction() {
+  await clearCurrentSession();
+  revalidatePath("/");
+  redirect("/login");
 }

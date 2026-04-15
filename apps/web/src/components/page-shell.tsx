@@ -1,14 +1,16 @@
 import type { PropsWithChildren, ReactNode } from "react";
 import Link from "next/link";
-import { DevSessionBadge } from "./dev-session-badge";
+import { SessionControls } from "./session-controls";
+import { requireAuthenticatedSession } from "../lib/auth";
 
 const navItems = [
   { href: "/", label: "Home" },
   { href: "/portfolios", label: "Portfolios" },
+  { href: "/imports", label: "Imports" },
   { href: "/commands", label: "Commands" }
 ];
 
-export function PageShell({
+export async function PageShell({
   title,
   eyebrow,
   children,
@@ -18,6 +20,15 @@ export function PageShell({
   eyebrow: string;
   aside?: ReactNode;
 }>) {
+  const session = await requireAuthenticatedSession();
+  const visibleNavItems = navItems.filter((item) =>
+    item.href === "/commands"
+      ? session.activeRole === "owner" || session.activeRole === "operator"
+      : item.href === "/imports"
+        ? session.activeRole === "owner"
+        : true
+  );
+
   return (
     <main>
       <div
@@ -40,7 +51,7 @@ export function PageShell({
             <p className="eyebrow">{eyebrow}</p>
             <h1 style={{ margin: 0, fontSize: 40 }}>{title}</h1>
             <nav style={{ display: "flex", gap: 14, marginTop: 16, flexWrap: "wrap" }}>
-              {navItems.map((item) => (
+              {visibleNavItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -57,7 +68,7 @@ export function PageShell({
             </nav>
           </div>
           <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-            <DevSessionBadge />
+            <SessionControls />
             {aside}
           </div>
         </header>

@@ -1,120 +1,65 @@
 # AirWise Pilot Execution Checklist
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
-## 1. Pilot prerequisites
+## Pilot objective
 
-### Customer and building intake
+Use the current AirWise MVP to run a credible pilot across:
 
-- signed pilot statement of work
-- building roster with addresses, BBLs, BINs if available
-- owner/operator contact matrix
-- designated RDP / RCxA contacts if applicable
-- list of target buildings for ventilation pilot
+- compliance and filing preparation
+- BAS readiness capture
+- monitoring where a gateway/runtime exists
+- supervised commands for tightly approved pilot points
 
-### Compliance intake
+## Minimum intake package
 
-- existing ESPM exports where available
-- utility bills or annual usage summaries
-- prior engineering or audit reports
-- affordable housing / Article 321 proof documents if relevant
-- current filing status and any open DOB issues
+### Always required
 
-### Monitoring/BAS intake
+- building roster
+- address, BBL, BIN when available
+- owner/operator contact map
+- article/pathway hints if the customer has them
+- current filing-year context
 
-- BAS vendor name
-- protocol and connection method
-- point list export if available
-- sensor vendor list
-- occupied schedules
-- written write-access approval policy
+### Strongly preferred for compliance and filing
 
-## 2. Phase-by-phase engineering checklist
+- ESPM exports
+- utility summaries or bills
+- prior reports or engineering packages
+- Article 321 proof documents if relevant
 
-### Phase 0
+### Strongly preferred for monitoring
 
-- create rules matrix
-- load current official limit and pathway reference data
-- define canonical building identity schema
-- define ventilation system archetypes
-- define write whitelist policy
+- BAS vendor and access model
+- point list or schedule exports
+- target system list
+- write approval policy for any supervised control scope
 
-### Phase 1
+## Product readiness checklist
 
-- import pilot portfolio
-- resolve each building to pathway
-- generate requirement rows
-- upload and classify at least one real document per major type
-- render portfolio dashboard
-- render at least one Article 320 workspace
-- render at least one Article 321 workspace
+### Compliance-first pilot
 
-### Phase 2
+- building imported
+- coverage resolved
+- requirements generated
+- documents registered
+- filing cycle refreshed
 
-- connect one live or replayed sensor stream
-- run one BACnet discovery
-- map points to canonical point types
-- enable issue detector
-- produce operator recommendations
-- verify before/after comparison view
+### Monitoring pilot
 
-### Phase 3
+- BAS profile captured
+- gateway registered
+- discovery imported
+- telemetry flowing
+- issue detection reviewed
 
-- register whitelisted writable points
-- test approval workflow
-- execute one temporary schedule change in staging/pilot
-- verify rollback
-- verify audit logs
+### Supervised control pilot
 
-### Phase 4
+- writable point is whitelisted
+- approval role is confirmed
+- dispatch and acknowledgement path verified
+- rollback expectations are understood
 
-- compile recommendation conversion rate
-- summarize time-to-detect and time-to-action
-- summarize compliance workflow completeness
-- decide on next control/automation scope
+## Success definition
 
-## 3. Definition of done
-
-The pilot is successful when:
-
-- portfolio buildings are no longer managed in spreadsheets as the primary system of record
-- the customer can see Article 320 and Article 321 readiness in one place
-- at least one monitored ventilation system produces useful actions
-- at least one operator-executed or supervised intervention has measurable before/after evidence
-- all BAS writes remain controlled, approved, and reversible
-
-## 4. Open risks to track weekly
-
-- public-vs-owner pathway conflicts
-- GFA data gaps
-- ESPM sharing delays
-- incomplete document sets
-- missing BAS access
-- unmappable points
-- sensor quality problems
-- operator adoption lag
-- unsafe or unclear write requests
-
-## 5. Pilot KPI set
-
-### Compliance KPIs
-
-- `% buildings mapped to pathway`
-- `% buildings with blocker-free readiness view`
-- `% requirements with evidence attached`
-- `time to first building scorecard`
-
-### Monitoring KPIs
-
-- `systems connected`
-- `points normalized`
-- `issues detected per system`
-- `recommendation acceptance rate`
-- `time from issue to action`
-
-### Control KPIs
-
-- `approved commands`
-- `successful rollbacks`
-- `write attempts blocked by policy`
-
+The pilot is successful when the customer can use AirWise as the working system for building truth and filing preparation, and optionally extend into monitoring and supervised commands where building access supports it.

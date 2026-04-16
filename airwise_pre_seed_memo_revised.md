@@ -19,7 +19,7 @@ The near-term wedge is not a full building-performance operating system. It is a
 
 NYC is the initial beachhead because LL97 is already active, the covered-building base is large, and owners are under pressure to make portfolio decisions with incomplete data and expensive incumbent tooling. Boston and Chicago are logical follow-on markets because they face similar emissions and disclosure pressure, but the company should validate the model in NYC first.
 
-AirWise is currently at the `design-partner and pilot formation` stage. The company has strong market signal from New York real estate operators, domain access through an experienced building-industry operator, and access to a manufacturing partner interested in supplying monitoring hardware. The pre-seed objective is to turn that market signal into a product MVP, pilot deployment, and the first repeatable paid portfolio.
+AirWise is currently at the `local pilot MVP and pilot-hardening` stage. The repo now includes a working local product across portfolio onboarding, LL97 compliance, filing-package preparation, documents, monitoring, recommendations, and supervised command workflows. The next company objective is to turn that working product surface into a tighter pilot deployment motion and the first repeatable paid portfolio.
 
 ## 2. Problem
 
@@ -116,12 +116,13 @@ That is enough to create customer value before advanced automation is proven.
 
 ### 4.5 What is true today vs. what must be proven
 
-**Already true**
+**Already true in the current product**
 
 - owners need a consolidated workflow for LL97-era compliance operations
 - NYC public data and owner-provided data can be combined into a practical portfolio baseline
 - monitoring can improve visibility where existing records are incomplete or stale
 - operators are dissatisfied with fragmented and expensive workflows
+- AirWise already supports a local MVP workflow across compliance, filing, documents, monitoring, and supervised command review
 
 **Must be proven through pilot execution**
 
@@ -156,15 +157,15 @@ The initial beachhead is NYC covered buildings. This keeps the company focused o
 
 Boston and Chicago should be described as follow-on markets after NYC validation, not as simultaneous execution priorities.
 
-### 5.3 Design-partner posture
+### 5.3 Current traction posture
 
-AirWise should describe current customer traction as `design-partner interest` and `pilot discussions` unless there is a signed commitment. That framing is credible at pre-seed and still demonstrates market pull.
+AirWise should describe current traction as `working local MVP`, `pilot discussions`, and `pilot hardening`, unless there is a signed deployment commitment. That framing is more accurate than describing the company as pre-product.
 
 ## 6. Go-To-Market
 
 The go-to-market should start narrow and relationship-led.
 
-### 6.1 Phase 1: design-partner pilot
+### 6.1 Phase 1: pilot hardening and first deployment
 
 The first objective is to convert an interested operator into a pilot on a small number of buildings. The pilot should produce:
 

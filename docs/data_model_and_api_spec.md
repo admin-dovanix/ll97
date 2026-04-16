@@ -1,335 +1,210 @@
 # AirWise Data Model and API Specification
 
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
-## 1. Data model
+## Purpose
 
-### Core relational entities
+This spec reflects the current codebase, not an aspirational future schema.
 
-#### `portfolios`
+## Current data model
 
-- `id`
-- `name`
-- `owner_name`
-- `primary_contact_id`
-- `timezone`
-- `status`
+### Core platform tables
 
-#### `buildings`
+- `portfolios`
+- `buildings`
+- `coverage_records`
+- `compliance_requirements`
+- `documents`
+- `document_evidence_links`
+- `audit_events`
 
-- `id`
-- `portfolio_id`
-- `name`
-- `address_line_1`
-- `city`
-- `state`
-- `zip`
-- `borough`
-- `block`
-- `lot`
-- `bbl`
-- `bin`
-- `dof_gsf`
-- `reported_gfa`
-- `occupancy_notes`
-- `is_affordable_housing_candidate`
-- `is_house_of_worship_candidate`
-- `created_at`
+### Monitoring and controls tables
 
-#### `coverage_records`
+- `monitoring_assets`
+- `bas_points`
+- `telemetry_events`
+- `recommendations`
+- `recommendation_actions`
+- `control_commands`
+- `bacnet_gateways`
+- `bacnet_gateway_discovery_runs`
+- `gateway_command_dispatches`
 
-- `id`
-- `building_id`
-- `filing_year`
-- `covered_status`
-- `compliance_pathway`
-- `pathway_tier`
-- `source_name`
-- `source_version`
-- `source_date`
-- `is_disputed`
-- `confidence_score`
-- `notes`
+### Public-source and import tables
 
-#### `property_use_breakdowns`
+- `public_building_records`
+- `building_public_matches`
+- `public_import_runs`
 
-- `id`
-- `building_id`
-- `reporting_year`
-- `espm_property_type`
-- `gfa_sqft`
-- `source_name`
-- `confidence_score`
+### Auth and access tables
 
-#### `annual_energy_records`
+- `app_users`
+- `user_portfolio_memberships`
+- `app_sessions`
 
-- `id`
-- `building_id`
-- `calendar_year`
-- `energy_source`
-- `consumption_value`
-- `consumption_unit`
-- `emissions_factor_version`
-- `emissions_tco2e`
-- `source_name`
+### Reporting and filing tables
 
-#### `compliance_requirements`
+- `reporting_cycles`
+- `reporting_input_packages`
+- `input_values`
+- `document_extractions`
+- `filing_modules`
+- `attestations`
+- `article_321_pecm_statuses`
+- `calculation_runs`
 
-- `id`
-- `building_id`
-- `reporting_year`
-- `requirement_type`
-- `status`
-- `due_date`
-- `required_role`
-- `blocking_reason`
-- `details_json`
+## Important model details
 
-#### `documents`
+### Buildings
 
-- `id`
-- `building_id`
+Buildings now include BAS-readiness fields in addition to identity and pathway fields:
+
+- `bas_present`
+- `bas_vendor`
+- `bas_protocol`
+- `bas_access_state`
+- `point_list_available`
+- `schedules_available`
+- `ventilation_system_archetype`
+- `equipment_inventory_status`
+
+### Documents
+
+Documents now serve both general evidence workflow and filing workflow. They include:
+
 - `document_type`
 - `file_url`
-- `uploaded_by`
-- `uploaded_at`
-- `classification_confidence`
-- `status`
-
-#### `document_evidence_links`
-
-- `id`
-- `document_id`
-- `requirement_id`
-- `linked_by`
-- `link_status`
-- `notes`
-
-#### `pecm_statuses`
-
-- `id`
-- `building_id`
+- `document_category`
 - `reporting_year`
-- `pecm_number`
-- `status`
-- `is_applicable`
-- `requires_upload`
-- `reviewer_role`
-- `notes`
-
-#### `monitoring_assets`
-
-- `id`
-- `building_id`
-- `system_name`
-- `asset_type`
-- `protocol`
-- `vendor`
-- `location`
-- `status`
-
-#### `bas_points`
-
-- `id`
-- `monitoring_asset_id`
-- `object_identifier`
-- `object_name`
-- `canonical_point_type`
-- `unit`
-- `is_writable`
-- `is_whitelisted`
-- `safety_category`
-- `metadata_json`
-
-#### `telemetry_events`
-
-- `id`
-- `building_id`
-- `system_id`
-- `point_id`
-- `timestamp`
-- `value_numeric`
-- `value_text`
-- `unit`
-- `quality_flag`
-
-#### `recommendations`
+- `parsed_status`
+- `parser_type`
+- `parser_version`
+
+### Gateways
+
+Gateways now include runtime-contract fields:
+
+- `ingest_token`
+- `runtime_mode`
+- `command_endpoint`
+- `agent_version`
+- `last_heartbeat_at`
+- `heartbeat_status`
+- `poll_interval_seconds`
+- `last_poll_requested_at`
+- `last_poll_completed_at`
+- `next_poll_due_at`
+- `runtime_metadata_json`
+
+### Reporting cycles
+
+Reporting is modeled as a year-scoped package per building:
+
+- `reporting_cycles` captures filing-year state
+- `reporting_input_packages` groups reviewed inputs
+- `input_values` stores manual, extracted, carryforward, or public-record values
+- `filing_modules` models optional workflow branches
+- `attestations` models owner / RDP / RCxA status
+- `article_321_pecm_statuses` tracks prescriptive PECM review state
+- `calculation_runs` stores calculated outputs and blocker summaries
+
+## Current web product routes
+
+- `/portfolios`
+- `/buildings/:id/overview`
+- `/buildings/:id/filing`
+- `/buildings/:id/compliance`
+- `/buildings/:id/documents`
+- `/buildings/:id/monitoring`
+- `/buildings/:id/recommendations`
+- `/commands`
+- `/imports`
+
+## Current API surface
+
+### Portfolio and building routes
+
+- `GET /api/portfolios`
+- `POST /api/portfolios`
+- `POST /api/portfolios/:id/buildings/import`
+- `GET /api/buildings/:id`
+- `POST /api/buildings/:id/bas-profile`
+
+### Public-source and coverage routes
+
+- `POST /api/public-building-records/import`
+- `GET /api/buildings/:id/public-sources`
+- `POST /api/buildings/:id/public-sources/auto-match`
+- `POST /api/buildings/:id/coverage/resolve`
+
+### Compliance routes
+
+- `GET /api/buildings/:id/compliance`
+- `POST /api/buildings/:id/compliance/requirements/generate`
+
+### Reporting routes
+
+- `POST /api/buildings/:id/reporting-cycles`
+- `GET /api/buildings/:id/reporting-cycles/:year`
+- `GET /api/reporting/fields`
+- `POST /api/reporting-cycles/:id/documents`
+- `POST /api/documents/:id/extract`
+- `GET /api/reporting-cycles/:id/input-values`
+- `POST /api/reporting-cycles/:id/input-values`
+- `POST /api/reporting-cycles/:id/input-values/review`
+- `POST /api/reporting-cycles/:id/modules/:moduleType/activate`
+- `POST /api/reporting-cycles/:id/attestations`
+- `POST /api/reporting-cycles/:id/pecms/:pecmKey`
+- `POST /api/reporting-cycles/:id/calculate`
+- `GET /api/reporting-cycles/:id/calculation-runs/latest`
+
+### Documents routes
+
+- `GET /api/buildings/:id/documents`
+- `POST /api/buildings/:id/documents`
+- `POST /api/buildings/:id/evidence-links`
+
+### Monitoring and gateway routes
+
+- `POST /api/telemetry/sensor`
+- `POST /api/bas/discovery-runs`
+- `GET /api/buildings/:id/gateways`
+- `POST /api/buildings/:id/gateways`
+- `POST /api/buildings/:id/gateway-discovery`
+- `GET /api/buildings/:id/monitoring/issues`
+- `GET /api/buildings/:id/recommendations`
+- `GET /api/buildings/:id/bas-points`
+- `GET /api/buildings/:id/telemetry`
+- `POST /api/bas-points/:id/mapping`
+
+### Gateway runtime contract
 
-- `id`
-- `building_id`
-- `system_id`
-- `issue_type`
-- `summary`
-- `evidence_json`
-- `recommended_action`
-- `writeback_eligible`
-- `confidence_score`
-- `status`
-- `assigned_to`
+- `GET /api/gateways/:id/runtime`
+- `POST /api/gateways/:id/runtime/heartbeat`
+- `POST /api/gateways/:id/runtime/discovery`
+- `POST /api/gateways/:id/runtime/telemetry`
+- `POST /api/gateways/:id/runtime/poll`
+- `POST /api/gateways/:id/runtime/poll/complete`
+- `GET /api/gateways/:id/runtime/commands`
+- `POST /api/gateways/:id/runtime/commands/dispatch`
+- `POST /api/gateways/runtime/health/refresh`
+- `POST /api/gateways/:id/runtime/commands/:dispatchId/ack`
 
-#### `control_commands`
+### Monitoring review and command routes
 
-- `id`
-- `building_id`
-- `point_id`
-- `requested_by`
-- `approved_by`
-- `command_type`
-- `previous_value`
-- `requested_value`
-- `requested_at`
-- `expires_at`
-- `rollback_policy`
-- `status`
-- `execution_log_json`
+- `GET /api/commands`
+- `POST /api/commands`
+- `POST /api/recommendations/:id/actions`
+- `POST /api/recommendation-actions/:id/status`
+- `POST /api/commands/:id/approve`
 
-## 2. API surface
+## Access model
 
-### Portfolio and building ingestion
+The web app currently uses cookie-backed app sessions stored in SQLite. Access is portfolio-scoped via:
 
-#### `POST /api/portfolios`
+- `owner`
+- `operator`
+- `rdp`
+- `rcxa`
 
-Creates a portfolio.
-
-#### `POST /api/portfolios/:id/buildings/import`
-
-Imports building roster rows with address, BBL, BIN, and notes.
-
-Response:
-
-```json
-{
-  "import_id": "imp_123",
-  "received": 24,
-  "matched": 21,
-  "needs_review": 3
-}
-```
-
-#### `GET /api/buildings/:id`
-
-Returns the canonical building graph summary.
-
-### Compliance APIs
-
-#### `POST /api/buildings/:id/coverage/resolve`
-
-Runs covered-building/pathway resolution.
-
-#### `GET /api/buildings/:id/compliance`
-
-Returns:
-
-```json
-{
-  "building_id": "bld_123",
-  "covered_status": "covered",
-  "pathway": "CP3",
-  "article": "321",
-  "requirements": [],
-  "blockers": [],
-  "penalties": {
-    "late_report_estimate": null,
-    "emissions_over_limit_estimate": null
-  }
-}
-```
-
-#### `POST /api/buildings/:id/compliance/requirements/generate`
-
-Generates or refreshes the building's requirement set for a reporting year.
-
-#### `GET /api/portfolios/:id/compliance/dashboard`
-
-Returns portfolio-level ranking and readiness.
-
-### Document and evidence APIs
-
-#### `POST /api/buildings/:id/documents`
-
-Uploads a document and triggers classification.
-
-#### `POST /api/requirements/:id/evidence-links`
-
-Attaches a document to a compliance requirement.
-
-### Monitoring APIs
-
-#### `POST /api/telemetry/sensor`
-
-Ingests normalized sensor events.
-
-#### `POST /api/bas/discovery-runs`
-
-Starts a BACnet discovery job for a pilot building/system.
-
-#### `GET /api/buildings/:id/monitoring/issues`
-
-Returns current issue detections and recommendations.
-
-### Command APIs
-
-#### `POST /api/commands`
-
-Creates an approval-required control command request.
-
-#### `POST /api/commands/:id/approve`
-
-Approves a whitelisted command.
-
-#### `POST /api/commands/:id/rollback`
-
-Immediately rolls back an active or completed command if supported.
-
-## 3. Roles and permissions
-
-### `owner_asset_manager`
-
-- read all building/compliance records in tenant
-- assign tasks
-- view recommendations
-- approve pilot commands only if granted
-
-### `operator_facilities`
-
-- view assigned buildings and systems
-- acknowledge issues
-- complete recommendation tasks
-- request commands
-
-### `rdp_rcxa`
-
-- view evidence, pathway, and requirement data
-- upload attestations
-- mark review completion
-
-### `internal_admin`
-
-- manage mappings, rules versions, and command safety policies
-
-## 4. Rule configuration tables
-
-Keep these configuration-driven:
-
-- filing deadlines by pathway/year
-- official penalty formulas
-- pathway mapping logic
-- emissions factors version
-- emissions limits by ESPM property type and period
-- Article 321 PECM metadata
-- BACnet point whitelist rules by pilot
-
-## 5. Testing targets
-
-- import and resolve buildings with mixed BBL/BIN quality
-- generate Article 320 and Article 321 requirement sets
-- attach evidence and update building readiness
-- ingest telemetry and generate deterministic recommendations
-- block unsafe command approvals
-
-## 6. Defaults
-
-- every compliance calculation stores a `source_version`
-- every issue stores `evidence_json`
-- every command stores `previous_value`
-- no command endpoint is enabled for a building unless a pilot flag is set
+This is a local pilot auth model, not production SSO.

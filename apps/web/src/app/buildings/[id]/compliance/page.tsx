@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { AppShell } from "../../../../components/layout/app-shell";
 import { PageHeader } from "../../../../components/layout/page-header";
-import { KPIStrip } from "../../../../components/data-display/kpi-strip";
 import { ComplianceWorkspace } from "../../../../components/compliance/compliance-workspace";
 import { StatusBadge } from "../../../../components/ui/status-badge";
 import { generateRequirementsAction } from "../../../actions";
@@ -11,9 +10,90 @@ import {
   getBuildingWorkspace
 } from "../../../../lib/server-data";
 import { buildingComplianceStatus } from "../../../../lib/status";
-import { formatCurrency } from "../../../../lib/utils";
+import { formatCurrency, formatDate } from "../../../../lib/utils";
 
 export const dynamic = "force-dynamic";
+
+function formatRequirementLabel(type: string) {
+  switch (type) {
+    case "coverage_verification":
+      return "Confirm the building is covered";
+    case "pathway_verification":
+      return "Confirm the LL97 filing pathway";
+    case "article_320_emissions_report":
+      return "Prepare the Article 320 emissions report";
+    case "article_321_performance_report":
+      return "Prepare the Article 321 performance report";
+    case "article_321_prescriptive_report":
+      return "Prepare the Article 321 prescriptive report";
+    case "attestation_rdp":
+      return "Obtain the RDP attestation";
+    case "attestation_rcxa":
+      return "Obtain the RCxA attestation";
+    default:
+      return type.replaceAll("_", " ");
+  }
+}
+
+function formatRoleLabel(role: string) {
+  switch (role) {
+    case "owner":
+      return "Owner";
+    case "operator":
+      return "Operator";
+    case "rdp":
+      return "RDP";
+    case "rcxa":
+      return "RCxA";
+    default:
+      return role.toUpperCase();
+  }
+}
+
+function formatActionLabel(input: {
+  evidenceState?: string;
+  requiredRole: string;
+  linkedDocumentCount: number;
+  blockingReason?: string;
+}) {
+  if (input.blockingReason) {
+    return "Resolve blocker";
+  }
+
+  if (input.evidenceState === "accepted") {
+    return "Confirm filing package";
+  }
+
+  if (input.linkedDocumentCount > 0) {
+    return "Review submitted evidence";
+  }
+
+  if (input.requiredRole === "owner") {
+    return "Upload owner evidence";
+  }
+
+  return `Request ${formatRoleLabel(input.requiredRole)} input`;
+}
+
+function formatBlockingReason(input: { status: string; evidenceState?: string; blockingReason?: string }) {
+  if (input.blockingReason) {
+    return input.blockingReason;
+  }
+
+  if (input.status === "blocked" && input.evidenceState === "missing") {
+    return "Waiting on required evidence before filing can proceed.";
+  }
+
+  if (input.evidenceState === "missing") {
+    return "Evidence still needs to be uploaded.";
+  }
+
+  if (input.evidenceState === "pending_review") {
+    return "Evidence is uploaded and waiting for review.";
+  }
+
+  return "No blocker is currently recorded.";
+}
 
 export default async function CompliancePage({
   params
@@ -38,6 +118,9 @@ export default async function CompliancePage({
     evidenceGapCount: compliance.evidenceGapCount,
     penalty: totalPenalty
   });
+  const earliestDueDate = [...compliance.requirements]
+    .map((requirement) => requirement.dueDate)
+    .sort((left, right) => new Date(left).getTime() - new Date(right).getTime())[0];
   const requirements = compliance.requirements.map((requirement) => {
     const linkedDocuments = documents.evidenceLinks
       .filter((link) => link.requirementId === requirement.id)
@@ -50,18 +133,22 @@ export default async function CompliancePage({
 
     return {
       id: requirement.id,
-      requirement: requirement.type.replaceAll("_", " "),
+      requirement: formatRequirementLabel(requirement.type),
       status: requirement.status,
       evidence: requirement.evidenceState ?? "missing",
-      owner: requirement.requiredRole,
+      owner: formatRoleLabel(requirement.requiredRole),
       due: requirement.dueDate,
-      actionLabel:
-        requirement.evidenceState === "accepted"
-          ? "Review audit trail"
-          : linkedDocuments.length > 0
-            ? "Review evidence"
-            : "Upload evidence",
-      blockingReason: requirement.blockingReason,
+      actionLabel: formatActionLabel({
+        evidenceState: requirement.evidenceState,
+        requiredRole: requirement.requiredRole,
+        linkedDocumentCount: linkedDocuments.length,
+        blockingReason: requirement.blockingReason
+      }),
+      blockingReason: formatBlockingReason({
+        status: requirement.status,
+        evidenceState: requirement.evidenceState,
+        blockingReason: requirement.blockingReason
+      }),
       acceptedEvidenceCount: requirement.acceptedEvidenceCount ?? 0,
       pendingEvidenceCount: requirement.pendingEvidenceCount ?? 0,
       rejectedEvidenceCount: requirement.rejectedEvidenceCount ?? 0,
@@ -80,26 +167,50 @@ export default async function CompliancePage({
             <form action={generateRequirementsAction}>
               <input name="buildingId" type="hidden" value={building.id} />
               <input name="reportingYear" type="hidden" value="2026" />
-              <button className="inline-flex min-h-11 items-center rounded-md border border-accent bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90" type="submit">
+              <button className="inline-flex min-h-11 items-center whitespace-nowrap rounded-md border border-accent bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90" type="submit">
                 Generate 2026 requirements
               </button>
             </form>
           }
-          description="Compliance readiness, evidence posture, and penalty exposure stay in one review surface so a portfolio manager can decide what is missing and who owns it."
+          description="Penalty exposure, filing blockers, and next actions are consolidated here so an owner or asset manager can decide what to do next."
           eyebrow="Compliance"
           status={<StatusBadge label={`${building.article} / ${building.pathway}`} tone="accent" />}
-          title={`${building.name} LL97 workspace`}
+          title={`${building.name} compliance`}
         />
       }
       kpis={
-        <KPIStrip
-          items={[
-            { label: "Status", value: buildingStatus.replace("-", " "), detail: "Filing posture", emphasize: true },
-            { label: "Total penalty", value: formatCurrency(totalPenalty) },
-            { label: "Evidence gaps", value: compliance.evidenceGapCount.toString() },
-            { label: "Requirements ready", value: compliance.readyRequirementCount.toString() }
-          ]}
-        />
+        <section className="overflow-hidden rounded-lg border border-danger/18 bg-gradient-to-r from-danger/8 via-panel to-panel shadow-inset">
+          <div className="grid gap-0 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+            <div className="border-b border-border px-6 py-5 xl:border-b-0 xl:border-r">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-danger">Penalty exposure</p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <p className="text-[3.35rem] font-semibold leading-none tracking-tight text-danger">{formatCurrency(totalPenalty)}</p>
+                <StatusBadge status={buildingStatus} />
+              </div>
+              <p className="mt-4 max-w-3xl text-base leading-7 text-foreground/84">
+                {building.name} faces {formatCurrency(totalPenalty)} in LL97 penalties. {compliance.evidenceGapCount} evidence
+                {compliance.evidenceGapCount === 1 ? " gap is" : " gaps are"} blocking compliance. Deadline: {formatDate(earliestDueDate)}.
+              </p>
+            </div>
+            <div className="grid gap-0 sm:grid-cols-3">
+              <div className="border-b border-border px-5 py-5 sm:border-r sm:border-b-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Filing status</p>
+                <p className="mt-3 text-2xl font-semibold capitalize tracking-tight text-foreground">{buildingStatus.replace("-", " ")}</p>
+                <p className="mt-1 text-sm text-foreground/68">Current LL97 position</p>
+              </div>
+              <div className="border-b border-border px-5 py-5 sm:border-r sm:border-b-0">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Evidence gaps</p>
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{compliance.evidenceGapCount}</p>
+                <p className="mt-1 text-sm text-foreground/68">Items still missing</p>
+              </div>
+              <div className="px-5 py-5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Requirements ready</p>
+                <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{compliance.readyRequirementCount}</p>
+                <p className="mt-1 text-sm text-foreground/68">Ready to submit</p>
+              </div>
+            </div>
+          </div>
+        </section>
       }
     >
       <ComplianceWorkspace

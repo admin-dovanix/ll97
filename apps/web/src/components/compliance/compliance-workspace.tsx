@@ -63,27 +63,31 @@ export function ComplianceWorkspace({
   const requirementColumns: DataTableColumn<RequirementRow>[] = [
     {
       id: "requirement",
-      header: "Requirement",
+      header: "What's needed",
       sortValue: (row) => row.due,
-      cell: (row) => row.requirement
+      cell: (row) => (
+        <div className="space-y-1">
+          <p className="font-medium text-foreground">{row.requirement}</p>
+          <p className="text-xs text-foreground/64">{row.actionLabel}</p>
+        </div>
+      )
     },
     {
-      id: "status",
-      header: "Status",
+      id: "state",
+      header: "Current state",
       sortValue: (row) => row.status,
-      cell: (row) => <StatusBadge label={row.status.replaceAll("_", " ")} tone={requirementStatusTone(row.status)} />
-    },
-    {
-      id: "evidence",
-      header: "Evidence",
-      sortValue: (row) => row.evidence,
-      cell: (row) => <StatusBadge label={row.evidence.replaceAll("_", " ")} tone={requirementStatusTone(row.evidence)} />
+      cell: (row) => (
+        <div className="space-y-2">
+          <StatusBadge label={row.status.replaceAll("_", " ")} tone={requirementStatusTone(row.status)} />
+          <StatusBadge label={row.evidence.replaceAll("_", " ")} tone={requirementStatusTone(row.evidence)} />
+        </div>
+      )
     },
     {
       id: "owner",
-      header: "Owner",
+      header: "Who acts",
       sortValue: (row) => row.owner,
-      cell: (row) => row.owner.toUpperCase()
+      cell: (row) => row.owner
     },
     {
       id: "due",
@@ -92,8 +96,18 @@ export function ComplianceWorkspace({
       cell: (row) => formatDateTime(row.due)
     },
     {
+      id: "blockingReason",
+      header: "Blocking reason",
+      sortValue: (row) => row.blockingReason ?? "",
+      cell: (row) => (
+        <span className={row.blockingReason === "No blocker is currently recorded." ? "text-foreground/52" : "text-foreground/76"}>
+          {row.blockingReason}
+        </span>
+      )
+    },
+    {
       id: "action",
-      header: "Action",
+      header: "Next step",
       className: "whitespace-nowrap",
       cell: (row) => <span className="font-medium text-accent">{row.actionLabel}</span>
     }
@@ -132,7 +146,7 @@ export function ComplianceWorkspace({
     <>
       <SectionContainer
         title="Requirements checklist"
-        description="This checklist keeps filing readiness, evidence state, and ownership in one dense review surface so compliance leaders can decide what blocks submission."
+        description="Plain-language filing checklist for owners, consultants, and operators. Each row shows what is needed, who owns it, what is blocking progress, and the next action."
       >
         <DataTable
           columns={requirementColumns}
@@ -144,7 +158,7 @@ export function ComplianceWorkspace({
       </SectionContainer>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <SectionContainer title="Penalty breakdown" description="Estimated penalties are surfaced separately so the team can distinguish emissions risk from filing process risk.">
+        <SectionContainer title="Penalty breakdown" description="Separate emissions exposure from filing-process exposure so the team knows where to intervene first.">
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-md border border-border bg-panelAlt p-4">
               <p className="eyebrow">Over emissions</p>
@@ -161,7 +175,7 @@ export function ComplianceWorkspace({
           </div>
         </SectionContainer>
 
-        <SectionContainer title="Risk note" description="A brief operator-facing explanation keeps the decision model obvious.">
+        <SectionContainer title="What needs attention" description="This note translates the filing state into plain language for the person making the decision.">
           <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
             {totalPenalty > 0
               ? "This building still carries measurable filing or over-limit exposure. The highest leverage move is to close blockers and attach accepted evidence to the requirements marked below."
@@ -194,7 +208,7 @@ export function ComplianceWorkspace({
       <SidePanel
         onClose={() => setSelected(null)}
         open={Boolean(selected)}
-        subtitle={selected?.owner.toUpperCase()}
+        subtitle={selected ? `${selected.owner} · Due ${formatDateTime(selected.due)}` : undefined}
         title={selected?.requirement ?? "Requirement detail"}
       >
         {selected ? (
@@ -208,6 +222,13 @@ export function ComplianceWorkspace({
                 <p>Due: {formatDateTime(selected.due)}</p>
                 <p>Owner: {selected.owner.toUpperCase()}</p>
                 {selected.blockingReason ? <p>Blocker: {selected.blockingReason}</p> : null}
+              </div>
+            </section>
+
+            <section className="grid gap-2">
+              <p className="eyebrow">Why this is blocked</p>
+              <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-foreground/78">
+                {selected.blockingReason}
               </div>
             </section>
 

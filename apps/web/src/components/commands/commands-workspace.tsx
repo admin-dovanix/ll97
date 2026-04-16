@@ -53,7 +53,7 @@ export function CommandsWorkspace({
   pointOptions: PointOption[];
   rows: CommandRow[];
 }) {
-  const [selected, setSelected] = useState<CommandRow | null>(rows[0] ?? null);
+  const [selected, setSelected] = useState<CommandRow | null>(null);
 
   const columns: DataTableColumn<CommandRow>[] = [
     {
@@ -99,6 +99,7 @@ export function CommandsWorkspace({
     {
       id: "action",
       header: "Action",
+      className: "whitespace-nowrap",
       cell: (row) => (
         <span className="font-medium text-accent">
           {row.status === "pending_approval" ? "Review approval" : "Inspect lifecycle"}

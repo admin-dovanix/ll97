@@ -100,7 +100,7 @@ export function BuildingOverviewWorkspace({
   candidates: CandidateRow[];
   matches: MatchRow[];
 }) {
-  const [selected, setSelected] = useState<CandidateRow | null>(candidates[0] ?? null);
+  const [selected, setSelected] = useState<CandidateRow | null>(null);
 
   const candidateColumns: DataTableColumn<CandidateRow>[] = [
     {

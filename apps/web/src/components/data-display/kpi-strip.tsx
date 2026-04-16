@@ -10,8 +10,8 @@ export type KPIItem = {
 
 export function KPIStrip({ items }: { items: KPIItem[] }) {
   return (
-    <section className="rounded-lg border border-border bg-panel px-panel py-4 shadow-inset">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <section className="overflow-hidden rounded-lg border border-border bg-panel shadow-inset">
+      <div className="grid gap-0 md:grid-cols-2 xl:grid-cols-4">
         {items.map((item) => (
           <KPIBlock key={item.label} {...item} />
         ))}

@@ -8,7 +8,7 @@ export async function SessionControls() {
 
   return (
     <section className="rounded-lg border border-border bg-panel shadow-inset">
-      <div className="grid gap-4 px-panel py-4">
+      <div className="grid gap-3 px-4 py-4">
         <div className="space-y-1">
           <p className="eyebrow">Access context</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -16,7 +16,7 @@ export async function SessionControls() {
             <StatusBadge label={session.activeRole ?? "No role"} tone="neutral" />
           </div>
         </div>
-        <div className="space-y-1 text-sm text-muted-foreground">
+        <div className="space-y-0.5 text-sm leading-6 text-foreground/76">
           {session.user.email}
           <br />
           {session.activePortfolioName ?? "No active portfolio"}
@@ -39,7 +39,7 @@ export async function SessionControls() {
           </form>
         ) : null}
         <form action={logoutAction}>
-          <Button className="w-full" type="submit" variant="ghost">
+          <Button className="w-full justify-center" type="submit" variant="ghost">
             Sign out
           </Button>
         </form>

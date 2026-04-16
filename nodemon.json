@@ -1,0 +1,9 @@
+{
+  "ext": "ts,js,mjs,json",
+  "ignore": [".next/**", ".airwise-data/**", "node_modules/**"],
+  "delay": "300ms",
+  "signal": "SIGTERM",
+  "watchOptions": {
+    "followSymlinks": false
+  }
+}

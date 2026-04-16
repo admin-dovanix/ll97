@@ -87,12 +87,12 @@ export async function AppShell({
           portfolioOptions={portfolioOptions}
           reportingYear={reportingYear}
         />
-        <main className="px-4 py-4 lg:px-context-x">
-          <div className="grid gap-4">
+        <main className="px-4 py-3 lg:px-context-x">
+          <div className="grid gap-3">
             {header}
             {kpis}
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
-              <div className="grid gap-4">{children}</div>
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_16.5rem]">
+              <div className="grid gap-3">{children}</div>
               <div className="hidden xl:block">
                 <div className="sticky top-24">
                   <SessionControls />

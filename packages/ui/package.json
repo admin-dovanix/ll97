@@ -9,6 +9,7 @@
     "react": "^19.0.0"
   },
   "scripts": {
+    "dev": "tsc -p tsconfig.json --noEmit false --outDir dist --watch",
     "build": "tsc -p tsconfig.json --noEmit false --outDir dist",
     "typecheck": "tsc -p tsconfig.json"
   }

@@ -59,7 +59,7 @@ export function ImportsWorkspace({
   datasets: DatasetRow[];
   runs: ImportRunRow[];
 }) {
-  const [selectedDataset, setSelectedDataset] = useState<DatasetRow | null>(datasets[0] ?? null);
+  const [selectedDataset, setSelectedDataset] = useState<DatasetRow | null>(null);
   const [selectedRun, setSelectedRun] = useState<ImportRunRow | null>(null);
 
   const datasetColumns: DataTableColumn<DatasetRow>[] = [

@@ -43,7 +43,7 @@ export function PortfolioWorkspace({
   portfolios: PortfolioOption[];
   canEdit: boolean;
 }) {
-  const [selected, setSelected] = useState<PortfolioRow | null>(rows[0] ?? null);
+  const [selected, setSelected] = useState<PortfolioRow | null>(null);
 
   const columns: DataTableColumn<PortfolioRow>[] = [
     {
@@ -97,8 +97,9 @@ export function PortfolioWorkspace({
     {
       id: "action",
       header: "Action",
+      className: "whitespace-nowrap",
       cell: (row) => (
-        <span className="font-medium text-accent" onClick={(event) => event.stopPropagation()}>
+        <span className="font-medium text-accent" data-no-row-click="true" onClick={(event) => event.stopPropagation()}>
           <Link href={`/buildings/${row.id}/compliance`}>{row.actionLabel}</Link>
         </span>
       )
@@ -226,6 +227,7 @@ export function PortfolioWorkspace({
           selected ? (
             <Link
               className="inline-flex min-h-11 items-center rounded-md border border-border bg-panelAlt px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+              data-no-row-click="true"
               href={`/buildings/${selected.id}/overview`}
             >
               Open building

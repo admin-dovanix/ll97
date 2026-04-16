@@ -13,6 +13,9 @@
     "dev:workers": "npm run dev --workspace @airwise/workers",
     "dev:gateway-agent": "npm run dev --workspace @airwise/gateway-agent",
     "dev:gateway-bridge": "npm run dev --workspace @airwise/gateway-bridge",
+    "dev:packages": "concurrently --names config,database,domain,rules,ui \"npm run dev --workspace @airwise/config\" \"npm run dev --workspace @airwise/database\" \"npm run dev --workspace @airwise/domain\" \"npm run dev --workspace @airwise/rules\" \"npm run dev --workspace @airwise/ui\"",
+    "dev:stack": "concurrently --names packages,api,web \"npm run dev:packages\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:compliance": "npm run dev:stack",
     "build:packages": "npm run build --workspace @airwise/config && npm run build --workspace @airwise/database && npm run build --workspace @airwise/domain && npm run build --workspace @airwise/rules && npm run build --workspace @airwise/ui",
     "build:apps": "npm run build --workspace @airwise/api && npm run build --workspace @airwise/web && npm run build --workspace @airwise/workers && npm run build --workspace @airwise/gateway-agent && npm run build --workspace @airwise/gateway-bridge",
     "build": "npm run build:packages && npm run build:apps",
@@ -22,6 +25,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.10",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"
   }

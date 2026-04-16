@@ -51,7 +51,7 @@ export function RecommendationsWorkspace({
   buildingId: string;
   recommendations: RecommendationRow[];
 }) {
-  const [selected, setSelected] = useState<RecommendationRow | null>(recommendations[0] ?? null);
+  const [selected, setSelected] = useState<RecommendationRow | null>(null);
 
   const recommendationColumns: DataTableColumn<RecommendationRow>[] = [
     {
@@ -93,6 +93,7 @@ export function RecommendationsWorkspace({
     {
       id: "action",
       header: "Action",
+      className: "whitespace-nowrap",
       cell: (row) => <span className="font-medium text-accent">{row.actionLabel}</span>
     }
   ];

@@ -58,7 +58,7 @@ export function ComplianceWorkspace({
   estimatedLateReportPenalty: number;
   estimatedEmissionsOverLimitPenalty: number;
 }) {
-  const [selected, setSelected] = useState<RequirementRow | null>(requirements[0] ?? null);
+  const [selected, setSelected] = useState<RequirementRow | null>(null);
 
   const requirementColumns: DataTableColumn<RequirementRow>[] = [
     {
@@ -94,6 +94,7 @@ export function ComplianceWorkspace({
     {
       id: "action",
       header: "Action",
+      className: "whitespace-nowrap",
       cell: (row) => <span className="font-medium text-accent">{row.actionLabel}</span>
     }
   ];

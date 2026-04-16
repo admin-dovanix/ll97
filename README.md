@@ -38,25 +38,36 @@ docs/        Strategy, architecture, pilot, and founder operations documents
 npm install
 ```
 
-2. Run the web app:
+2. Start the common local stack:
+
+```bash
+npm run dev:stack
+```
+
+This starts:
+
+- shared package watch builds
+- the API
+- the web app
+
+If you prefer split terminals, run:
+
+```bash
+npm run dev:packages
+npm run dev:api
+```
 
 ```bash
 npm run dev:web
 ```
 
-3. Run the API:
-
-```bash
-npm run dev:api
-```
-
-4. Run workers:
+3. Run workers:
 
 ```bash
 npm run dev:workers
 ```
 
-5. Run the gateway agent:
+4. Run the gateway agent:
 
 ```bash
 AIRWISE_GATEWAY_ID=<gateway-id> \
@@ -64,13 +75,13 @@ AIRWISE_GATEWAY_TOKEN=<gateway-token> \
 npm run dev:gateway-agent
 ```
 
-6. Run the reference gateway bridge:
+5. Run the reference gateway bridge:
 
 ```bash
 npm run dev:gateway-bridge
 ```
 
-7. Verify the repo state:
+6. Verify the repo state:
 
 ```bash
 npm run typecheck
@@ -79,6 +90,19 @@ npm run build
 
 The local dev database is created automatically at `/Users/karan/Documents/LL97/.airwise-data/airwise.db`.
 Node currently prints an experimental warning for `node:sqlite`; that is expected in this repo.
+
+## Dev runtime notes
+
+- The supported local startup flow is `npm run dev:stack` or the split-terminal version using `dev:packages`, `dev:api`, and `dev:web`.
+- Shared workspace packages resolve from `dist/index.js`, so `dev:packages` must be running during local development or app processes can load stale package exports.
+- The old `tsx src/main.ts` launcher is no longer the supported path for app dev scripts.
+
+## Troubleshooting
+
+- If an app starts but looks like it is using stale shared code, make sure `npm run dev:packages` is running.
+- If you want to see the raw startup error without the watcher wrapper, run `npm run dev:once --workspace @airwise/api` or the equivalent workspace command for another app.
+- If the local database schema is stale or corrupted, delete `/Users/karan/Documents/LL97/.airwise-data/airwise.db` and restart the dev processes.
+- If the filing page still returns a 404 after startup, restart the API and web processes after confirming the package watchers are running.
 
 ## Current status
 
@@ -424,4 +448,9 @@ For compiled runs, point `AIRWISE_GATEWAY_BRIDGE_SDK_MODULE_PATH` at the built J
 - [Technical implementation plan](/Users/karan/Documents/LL97/docs/technical_implementation_plan.md)
 - [LL97 compliance spec](/Users/karan/Documents/LL97/docs/ll97_compliance_spec.md)
 - [Ventilation + BACnet spec](/Users/karan/Documents/LL97/docs/ventilation_bacnet_spec.md)
+- [Current capabilities and no-sensor strategy](/Users/karan/Documents/LL97/docs/current_capabilities_and_no_sensor_strategy.md)
+- [Building capability tiers roadmap](/Users/karan/Documents/LL97/docs/building_capability_tiers_roadmap.md)
+- [Next sprint build plan](/Users/karan/Documents/LL97/docs/next_sprint_build_plan.md)
+- [Next sprint founder execution checklist](/Users/karan/Documents/LL97/docs/next_sprint_founder_execution_checklist.md)
+- [Next sprint ticket backlog](/Users/karan/Documents/LL97/docs/next_sprint_ticket_backlog.md)
 - [90-day roadmap](/Users/karan/Documents/LL97/docs/90_day_engineering_roadmap.md)

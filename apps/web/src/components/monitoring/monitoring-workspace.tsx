@@ -218,7 +218,7 @@ export function MonitoringWorkspace({
   telemetry: TelemetryRow[];
   dispatches: DispatchRow[];
 }) {
-  const [selectedIssue, setSelectedIssue] = useState<MonitoringIssueRow | null>(issues[0] ?? null);
+  const [selectedIssue, setSelectedIssue] = useState<MonitoringIssueRow | null>(null);
   const primaryGateway = gateways[0] ?? null;
 
   const issueColumns: DataTableColumn<MonitoringIssueRow>[] = [
@@ -254,6 +254,7 @@ export function MonitoringWorkspace({
     {
       id: "action",
       header: "Action",
+      className: "whitespace-nowrap",
       cell: (row) => <span className="font-medium text-accent">{row.action}</span>
     }
   ];

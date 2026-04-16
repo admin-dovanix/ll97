@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import { useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 
@@ -16,6 +17,14 @@ type SortState = {
   columnId: string;
   direction: "asc" | "desc";
 };
+
+function shouldSkipRowClick(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return Boolean(target.closest("a, button, input, select, textarea, label, [data-no-row-click='true']"));
+}
 
 export function DataTable<T extends { id: string }>({
   columns,
@@ -81,10 +90,10 @@ export function DataTable<T extends { id: string }>({
               {columns.map((column) => {
                 const isSorted = sortState?.columnId === column.id;
                 return (
-                  <th
+                    <th
                     key={column.id}
                     className={cn(
-                      "border-b border-border px-table-x py-3 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground",
+                      "border-b border-border px-table-x py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-foreground/64",
                       column.align === "right" ? "text-right" : column.align === "center" ? "text-center" : "text-left"
                     )}
                   >
@@ -125,12 +134,26 @@ export function DataTable<T extends { id: string }>({
                   className={cn(
                     "group border-b border-border/70",
                     onRowClick ? "cursor-pointer" : "",
-                    selectedRowId === row.id ? "bg-accent/8" : "hover:bg-muted/45"
+                    selectedRowId === row.id ? "bg-accent/10" : "hover:bg-muted/42"
                   )}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onClick={
+                    onRowClick
+                      ? (event: MouseEvent<HTMLTableRowElement>) => {
+                          if (shouldSkipRowClick(event.target)) {
+                            return;
+                          }
+
+                          onRowClick(row);
+                        }
+                      : undefined
+                  }
                   onKeyDown={
                     onRowClick
                       ? (event) => {
+                          if (shouldSkipRowClick(event.target)) {
+                            return;
+                          }
+
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
                             onRowClick(row);
@@ -144,7 +167,7 @@ export function DataTable<T extends { id: string }>({
                     <td
                       key={column.id}
                       className={cn(
-                        "border-b border-border/70 px-table-x py-table-y text-sm text-foreground transition-colors",
+                        "border-b border-border/70 px-table-x py-3 align-top text-[0.96rem] text-foreground transition-colors",
                         column.align === "right" ? "text-right tabular-nums" : column.align === "center" ? "text-center" : "text-left",
                         column.className
                       )}

@@ -56,7 +56,7 @@ export function DocumentsWorkspace({
   documents: DocumentRow[];
   requirements: RequirementRow[];
 }) {
-  const [selected, setSelected] = useState<RequirementRow | null>(requirements[0] ?? null);
+  const [selected, setSelected] = useState<RequirementRow | null>(null);
 
   const requirementColumns: DataTableColumn<RequirementRow>[] = [
     {
@@ -94,6 +94,7 @@ export function DocumentsWorkspace({
     {
       id: "action",
       header: "Primary action",
+      className: "whitespace-nowrap",
       cell: (row) => <span className="font-medium text-accent">{row.linkedDocuments.length ? "Review evidence" : "Attach evidence"}</span>
     }
   ];

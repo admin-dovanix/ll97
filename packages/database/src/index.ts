@@ -394,6 +394,417 @@ function reconcileSeedData(db: DatabaseSync) {
     );
   }
 
+  db.prepare(
+    `INSERT OR IGNORE INTO buildings (
+      id, portfolio_id, name, address_line_1, city, state, zip, bbl, bin, dof_gsf, reported_gfa, article, pathway
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "bld_002",
+    "pf_001",
+    "Atlantic Terrace",
+    "870 Atlantic Avenue",
+    "Brooklyn",
+    "NY",
+    "11238",
+    "3011300024",
+    "3391180",
+    96000,
+    91850,
+    "320",
+    "CP0"
+  );
+
+  db.prepare(
+    `INSERT OR IGNORE INTO coverage_records (
+      id, building_id, filing_year, covered_status, compliance_pathway, pathway_tier, source_name, source_version, source_date, is_disputed, confidence_score, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "cov_002",
+    "bld_002",
+    2026,
+    "covered",
+    "CP0",
+    "CP0",
+    "DOB covered buildings list",
+    "2026",
+    "2026-01-01",
+    0,
+    0.9,
+    "Seeded no-sensor compliance-first building for demo onboarding."
+  );
+
+  db.prepare(
+    `INSERT OR IGNORE INTO public_building_records (
+      id, dataset_name, source_version, source_record_key, normalized_address_key, address_line_1, city, state, zip, bbl, bin, covered_status, compliance_pathway, article, gross_sq_ft, source_row_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "pub_002",
+    "dob_covered_buildings",
+    "2026",
+    "3011300024|3391180|870 ATLANTIC AVENUE|BROOKLYN|NY|11238",
+    "870 ATLANTIC AVENUE|BROOKLYN|NY|11238",
+    "870 Atlantic Avenue",
+    "Brooklyn",
+    "NY",
+    "11238",
+    "3011300024",
+    "3391180",
+    "covered",
+    "CP0",
+    "320",
+    96000,
+    JSON.stringify({ source: "seed", notes: "Compliance-first building for demo mode." })
+  );
+
+  upsertRequirement.run(
+    "req_cov_002",
+    "bld_002",
+    2026,
+    "coverage_verification",
+    "complete",
+    config.filingDeadlines[0]?.dueDate ?? "2026-05-01",
+    "owner",
+    null
+  );
+  upsertRequirement.run(
+    "req_320_002",
+    "bld_002",
+    2026,
+    "article_320_emissions_report",
+    "in_progress",
+    config.filingDeadlines.find((item) => item.requirementType === "article_320_emissions_report")?.dueDate ?? "2026-05-01",
+    "rdp",
+    "Annual energy totals and property-type area breakout still need review."
+  );
+  upsertRequirement.run(
+    "req_rdp_002",
+    "bld_002",
+    2026,
+    "attestation_rdp",
+    "blocked",
+    config.filingDeadlines.find((item) => item.requirementType === "article_320_emissions_report")?.dueDate ?? "2026-05-01",
+    "rdp",
+    "Awaiting reviewed energy package before RDP attestation can be completed."
+  );
+
+  db.prepare(
+    `UPDATE buildings
+     SET
+       bas_present = 'no',
+       bas_vendor = NULL,
+       bas_protocol = 'unknown',
+       bas_access_state = 'no_access',
+       point_list_available = 'no',
+       schedules_available = 'no',
+       ventilation_system_archetype = 'unknown',
+       equipment_inventory_status = 'not_started'
+     WHERE id = ?`
+  ).run("bld_002");
+
+  db.prepare(
+    `INSERT OR REPLACE INTO documents (
+      id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "doc_demo_001",
+    "bld_001",
+    "RCx investigation memo",
+    "file://airwise/demo/rcx-investigation-memo.pdf",
+    0.91,
+    "uploaded",
+    "engineering_report",
+    2026,
+    "parsed",
+    "seed",
+    "demo-v1"
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO documents (
+      id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "doc_demo_002",
+    "bld_002",
+    "CY2025 ESPM export",
+    "file://airwise/demo/cy2025-espm-export.xlsx",
+    0.95,
+    "uploaded",
+    "espm_export",
+    2026,
+    "parsed",
+    "seed",
+    "demo-v1"
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO documents (
+      id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "doc_demo_003",
+    "bld_002",
+    "ConEd utility summary",
+    "file://airwise/demo/coned-utility-summary.pdf",
+    0.88,
+    "uploaded",
+    "utility_bill",
+    2026,
+    "review_required",
+    "seed",
+    "demo-v1"
+  );
+
+  db.prepare(
+    `INSERT OR REPLACE INTO document_evidence_links (id, document_id, requirement_id, link_status, notes)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(
+    "evd_demo_001",
+    "doc_demo_001",
+    sampleBuilding.article === "321" ? "req_rcxa_001" : "req_rdp_001",
+    "pending_review",
+    "Engineering package uploaded and awaiting consultant review."
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO document_evidence_links (id, document_id, requirement_id, link_status, notes)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(
+    "evd_demo_002",
+    "doc_demo_002",
+    "req_320_002",
+    "accepted",
+    "Benchmarking export accepted as filing support."
+  );
+
+  db.prepare(
+    `INSERT OR IGNORE INTO reporting_cycles (
+      id, building_id, reporting_year, filing_status, extension_requested, filing_due_date, extended_due_date, pathway_snapshot, article_snapshot, cbl_version, cbl_dispute_status, owner_of_record_status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("cycle_demo_002", "bld_002", 2026, "blocked", 0, "2026-06-30", "2026-08-29", "CP0", "320", "2026", "not_disputed", "mismatch");
+  db.prepare(
+    `UPDATE reporting_cycles
+     SET filing_status = ?, filing_due_date = ?, extended_due_date = ?, pathway_snapshot = ?, article_snapshot = ?, cbl_version = ?, cbl_dispute_status = ?, owner_of_record_status = ?
+     WHERE id = ?`
+  ).run("blocked", "2026-06-30", "2026-08-29", "CP0", "320", "2026", "not_disputed", "mismatch", "cycle_demo_002");
+
+  db.prepare(
+    `INSERT OR IGNORE INTO reporting_input_packages (id, reporting_cycle_id, package_status)
+     VALUES (?, ?, ?)`
+  ).run("pkg_demo_002", "cycle_demo_002", "review_required");
+  db.prepare(`UPDATE reporting_input_packages SET package_status = ? WHERE id = ?`).run("review_required", "pkg_demo_002");
+
+  const filingModules = [
+    ["mod_demo_002_core", "article_320_report", "active", "2026-06-30", "ready", null],
+    ["mod_demo_002_ext", "extension", "inactive", "2026-08-29", "ready", null],
+    ["mod_demo_002_deductions", "deductions", "inactive", "2026-06-30", "requires_core_report", null]
+  ] as const;
+  for (const [id, moduleType, status, dueDate, prerequisiteState, blockingReason] of filingModules) {
+    db.prepare(
+      `INSERT OR IGNORE INTO filing_modules (id, reporting_cycle_id, module_type, status, due_date, prerequisite_state, blocking_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, "cycle_demo_002", moduleType, status, dueDate, prerequisiteState, blockingReason);
+    db.prepare(
+      `UPDATE filing_modules
+       SET status = ?, due_date = ?, prerequisite_state = ?, blocking_reason = ?
+       WHERE id = ?`
+    ).run(status, dueDate, prerequisiteState, blockingReason, id);
+  }
+
+  const demoAttestations = [
+    ["att_demo_002_owner", "owner", "Maya Owner", "matched", "completed", "2026-04-10T15:00:00Z"],
+    ["att_demo_002_rdp", "rdp", "Riley RDP", "mismatch", "blocked", null],
+    ["att_demo_002_rcxa", "rcxa", null, "unknown", "pending", null]
+  ] as const;
+  for (const [id, role, signerName, ownerMatchStatus, completionStatus, completedAt] of demoAttestations) {
+    db.prepare(
+      `INSERT OR IGNORE INTO attestations (id, reporting_cycle_id, role, signer_name, owner_of_record_match_status, completion_status, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, "cycle_demo_002", role, signerName, ownerMatchStatus, completionStatus, completedAt);
+    db.prepare(
+      `UPDATE attestations
+       SET signer_name = ?, owner_of_record_match_status = ?, completion_status = ?, completed_at = ?
+       WHERE id = ?`
+    ).run(signerName, ownerMatchStatus, completionStatus, completedAt, id);
+  }
+
+  const demoInputs = [
+    ["inp_demo_002_bbl", "bbl", JSON.stringify("3011300024"), "public_record", "building_record", 0.99, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_bin", "bin", JSON.stringify("3391180"), "public_record", "building_record", 0.99, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_addr", "address", JSON.stringify("870 Atlantic Avenue, Brooklyn, NY 11238"), "public_record", "building_record", 0.99, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_year", "reporting_year", JSON.stringify(2026), "carryforward", "reporting_cycle", 1, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_article", "article", JSON.stringify("320"), "public_record", "coverage_snapshot", 0.99, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_pathway", "pathway", JSON.stringify("CP0"), "public_record", "coverage_snapshot", 0.99, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_cbl", "cbl_version", JSON.stringify("2026"), "public_record", "coverage_snapshot", 0.95, "accepted", "owner", "2026-04-08T13:00:00Z"],
+    ["inp_demo_002_gsf", "gross_square_feet", JSON.stringify(96000), "manual", "manual_entry", 1, "accepted", "owner", "2026-04-09T11:15:00Z"],
+    ["inp_demo_002_espm_id", "espm_property_id", JSON.stringify("PM-8821901"), "document_extraction", "doc_demo_002", 0.92, "accepted", "owner", "2026-04-09T11:45:00Z"],
+    ["inp_demo_002_energy", "energy_by_source", JSON.stringify({ electricity_kwh: 1984200, natural_gas_therms: 118450 }), "document_extraction", "doc_demo_003", 0.81, "pending_review", null, null]
+  ] as const;
+  for (const [id, fieldKey, valueJson, sourceType, sourceRef, confidenceScore, reviewStatus, reviewedBy, reviewedAt] of demoInputs) {
+    db.prepare(
+      `INSERT OR REPLACE INTO input_values (
+        id, package_id, field_key, value_json, source_type, source_ref, confidence_score, review_status, reviewed_by, reviewed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, "pkg_demo_002", fieldKey, valueJson, sourceType, sourceRef, confidenceScore, reviewStatus, reviewedBy, reviewedAt);
+  }
+
+  db.prepare(
+    `INSERT OR REPLACE INTO calculation_runs (
+      id, reporting_cycle_id, calculation_version, missing_required_inputs_json, needs_review_json, warnings_json, calculation_outputs_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "calc_demo_002",
+    "cycle_demo_002",
+    "ll97-2026-v1",
+    JSON.stringify(["gfa_by_property_type"]),
+    JSON.stringify(["energy_by_source"]),
+    JSON.stringify(["Owner-of-record mismatch is blocking final attestation."]),
+    JSON.stringify({
+      actual_emissions_tco2e: 812,
+      adjusted_actual_emissions_tco2e: 812,
+      adjusted_emissions_limit_tco2e: 689,
+      over_limit_tco2e: 123,
+      late_penalty_usd: 0,
+      emissions_penalty_usd: 33087
+    })
+  );
+
+  db.prepare(
+    `INSERT OR IGNORE INTO bacnet_gateways (
+      id, building_id, name, protocol, vendor, host, port, status, auth_type, ingest_token, runtime_mode, command_endpoint, metadata_json,
+      agent_version, heartbeat_status, poll_interval_seconds, last_heartbeat_at, last_poll_requested_at, last_poll_completed_at, next_poll_due_at, runtime_metadata_json, last_seen_at, last_discovery_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "gw_demo_001",
+    "bld_001",
+    "Pilot BACnet Gateway",
+    "BACnet/IP",
+    "FieldServer",
+    "10.10.4.15",
+    47808,
+    "connected",
+    null,
+    "gwtok_demo_001",
+    "loopback",
+    "/runtime/commands",
+    JSON.stringify({
+      bridgeBackend: "simulated",
+      sdkExportName: "createBacnetSdkProvider",
+      sdkModulePath: "/Users/karan/Documents/LL97/apps/gateway-bridge/src/providers/bacnet-js-provider.ts",
+      sdkConfigJson: JSON.stringify({ demo: true }),
+      configValidation: {
+        status: "valid",
+        issues: [],
+        warnings: [],
+        summary: { pointCount: 2, writablePointCount: 1, whitelistedPointCount: 1 }
+      },
+      dispatchPolicy: { timeoutSeconds: 180, maxAttempts: 3 },
+      replayProfile: { lastScenario: "after_hours_runtime", lastReplayAt: "2026-04-14T23:48:00Z" }
+    }),
+    "demo-agent-1",
+    "healthy",
+    300,
+    "2026-04-14T23:55:00Z",
+    "2026-04-14T23:50:00Z",
+    "2026-04-14T23:51:00Z",
+    "2026-04-15T00:00:00Z",
+    JSON.stringify({ mode: "seeded_demo" }),
+    "2026-04-14T23:55:00Z",
+    "2026-04-14T23:49:00Z"
+  );
+
+  db.prepare(
+    `UPDATE monitoring_assets
+     SET source_gateway_id = COALESCE(source_gateway_id, ?), source_asset_key = COALESCE(source_asset_key, ?)
+     WHERE id = ?`
+  ).run("gw_demo_001", "garage_exhaust", "asset_001");
+  db.prepare(
+    `INSERT OR IGNORE INTO bas_points (
+      id, monitoring_asset_id, object_identifier, object_name, canonical_point_type, unit, is_writable, is_whitelisted, safety_category, metadata_json, source_point_key
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "point_demo_002",
+    "asset_001",
+    "analog-input,18",
+    "Garage CO2",
+    "co2",
+    "ppm",
+    0,
+    0,
+    "observational",
+    JSON.stringify({ currentValue: 1180 }),
+    "garage_co2"
+  );
+
+  db.prepare(
+    `INSERT OR REPLACE INTO telemetry_events (
+      id, building_id, system_id, point_id, timestamp, value_numeric, value_text, unit, quality_flag
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("evt_demo_001", "bld_001", "asset_001", "point_001", "2026-04-14T23:42:00Z", null, "occupied", "enum", "ok");
+  db.prepare(
+    `INSERT OR REPLACE INTO telemetry_events (
+      id, building_id, system_id, point_id, timestamp, value_numeric, value_text, unit, quality_flag
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run("evt_demo_002", "bld_001", "asset_001", "point_demo_002", "2026-04-14T23:44:00Z", 1180, null, "ppm", "ok");
+
+  db.prepare(
+    `INSERT OR REPLACE INTO recommendation_actions (
+      id, recommendation_id, building_id, action_type, action_status, assignee, notes, created_at, started_at, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "act_demo_001",
+    "rec_001",
+    "bld_001",
+    "schedule_review",
+    "completed",
+    "Owen Operator",
+    "Confirmed after-hours schedule drift and queued supervised occupancy reset.",
+    "2026-04-14T23:30:00Z",
+    "2026-04-14T23:35:00Z",
+    "2026-04-14T23:58:00Z"
+  );
+  db.prepare(`UPDATE recommendations SET status = ?, assigned_to = ? WHERE id = ?`).run("in_progress", "Owen Operator", "rec_001");
+
+  db.prepare(
+    `INSERT OR REPLACE INTO control_commands (
+      id, building_id, point_id, command_type, previous_value, requested_value, requested_at, approved_at, executed_at, expires_at, expired_at, rollback_policy, rollback_value, rollback_executed_at, execution_notes, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "cmd_demo_001",
+    "bld_001",
+    "point_001",
+    "set_value",
+    "occupied",
+    "unoccupied",
+    "2026-04-14T23:40:00Z",
+    "2026-04-14T23:41:00Z",
+    "2026-04-14T23:42:00Z",
+    "2026-04-15T05:00:00Z",
+    null,
+    "auto_on_expiry",
+    "occupied",
+    null,
+    "Seeded executed command for demo workflow.",
+    "executed"
+  );
+  db.prepare(
+    `INSERT OR REPLACE INTO gateway_command_dispatches (
+      id, gateway_id, command_id, building_id, point_id, status, payload_json, response_json, error_message, created_at, dispatched_at, acknowledged_at, delivery_attempt_count, last_delivery_attempt_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    "dispatch_demo_001",
+    "gw_demo_001",
+    "cmd_demo_001",
+    "bld_001",
+    "point_001",
+    "acknowledged",
+    JSON.stringify({ requestedValue: "unoccupied" }),
+    JSON.stringify({ acknowledged: true }),
+    null,
+    "2026-04-14T23:41:00Z",
+    "2026-04-14T23:41:30Z",
+    "2026-04-14T23:42:00Z",
+    1,
+    "2026-04-14T23:41:30Z"
+  );
+
   const seededUsers = [
     {
       userId: "user_owner_001",

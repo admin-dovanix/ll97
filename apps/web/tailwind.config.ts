@@ -12,6 +12,7 @@ const config: Config = {
           foreground: "hsl(var(--muted-foreground))"
         },
         border: "hsl(var(--border))",
+        borderStrong: "hsl(var(--border-strong))",
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))"
@@ -30,7 +31,13 @@ const config: Config = {
         },
         panel: "hsl(var(--panel))",
         panelAlt: "hsl(var(--panel-alt))",
-        overlay: "hsl(var(--overlay))"
+        panelMuted: "hsl(var(--panel-muted))",
+        overlay: "hsl(var(--overlay))",
+        sidebar: "hsl(var(--sidebar))",
+        sidebarForeground: "hsl(var(--sidebar-foreground))",
+        sidebarMuted: "hsl(var(--sidebar-muted))",
+        sidebarActive: "hsl(var(--sidebar-active))",
+        sidebarBorder: "hsl(var(--sidebar-border))"
       },
       borderRadius: {
         sm: "6px",
@@ -44,8 +51,8 @@ const config: Config = {
         "context-x": "1.25rem"
       },
       boxShadow: {
-        panel: "0 10px 24px rgba(15, 23, 42, 0.08)",
-        inset: "inset 0 1px 0 rgba(255,255,255,0.45)"
+        panel: "0 12px 30px rgba(15, 23, 42, 0.06)",
+        inset: "inset 0 1px 0 rgba(255,255,255,0.35)"
       },
       fontFamily: {
         sans: [

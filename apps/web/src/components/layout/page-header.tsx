@@ -19,17 +19,17 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "grid gap-4 border-b border-border pb-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end",
+        "grid gap-4 border-b border-border pb-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end",
         className
       )}
     >
-      <div className="space-y-2">
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/62">{eyebrow}</p>
+      <div className="space-y-2.5">
+        <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-foreground/54">{eyebrow}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground lg:text-[2rem]">{title}</h1>
+          <h1 className="text-[26px] font-medium tracking-[-0.02em] text-foreground lg:text-[2.3rem]">{title}</h1>
           {status}
         </div>
-        {description ? <p className="max-w-3xl text-sm leading-6 text-foreground/78 lg:text-[15px]">{description}</p> : null}
+        {description ? <p className="max-w-4xl text-[14px] leading-7 text-foreground/76 lg:text-[15px]">{description}</p> : null}
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2 lg:justify-end">{actions}</div> : null}
     </header>

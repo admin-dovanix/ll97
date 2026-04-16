@@ -30,13 +30,13 @@ export function ContextBar({
   const router = useRouter();
 
   return (
-    <div className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
-      <div className="flex flex-col gap-3 px-4 py-2.5 lg:flex-row lg:items-center lg:justify-between lg:px-context-x">
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="grid gap-1 text-xs text-foreground/78">
-            <span className="font-mono uppercase tracking-[0.18em]">Portfolio</span>
+    <div className="sticky top-0 z-30 border-b border-border bg-panel">
+      <div className="flex flex-col gap-4 px-4 py-4 lg:flex-row lg:items-center lg:justify-between lg:px-8 lg:py-3.5">
+        <div className="flex flex-wrap items-center gap-3 lg:gap-5">
+          <label className="flex items-center gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-foreground/54">Portfolio</span>
             <select
-              className="min-h-11 rounded-md border border-border bg-panel px-3 text-[0.97rem] font-medium text-foreground outline-none transition-colors focus:border-accent"
+              className="min-h-10 rounded-md border border-border bg-panelAlt px-4 text-[13px] font-normal text-foreground outline-none transition-colors focus:border-accent"
               value={currentPortfolioId ?? portfolioOptions[0]?.value ?? ""}
               onChange={(event) => router.push(portfolioOptions.find((item) => item.value === event.target.value)?.href ?? "/portfolios")}
             >
@@ -47,10 +47,10 @@ export function ContextBar({
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-xs text-foreground/78">
-            <span className="font-mono uppercase tracking-[0.18em]">Building</span>
+          <label className="flex items-center gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-foreground/54">Building</span>
             <select
-              className="min-h-11 rounded-md border border-border bg-panel px-3 text-[0.97rem] font-medium text-foreground outline-none transition-colors focus:border-accent"
+              className="min-h-10 rounded-md border border-border bg-panelAlt px-4 text-[13px] font-normal text-foreground outline-none transition-colors focus:border-accent"
               value={currentBuildingId ?? buildingOptions[0]?.value ?? ""}
               onChange={(event) => router.push(buildingOptions.find((item) => item.value === event.target.value)?.href ?? "/portfolios")}
             >
@@ -61,14 +61,14 @@ export function ContextBar({
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-xs text-foreground/78">
-            <span className="font-mono uppercase tracking-[0.18em]">Reporting year</span>
-            <div className="flex min-h-11 items-center rounded-md border border-border bg-panel px-3 text-[0.97rem] font-medium text-foreground">
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-foreground/54">Filing year</span>
+            <div className="flex min-h-10 min-w-[88px] items-center rounded-md border border-border bg-panelAlt px-4 text-[13px] font-normal text-foreground">
               {reportingYear}
             </div>
-          </label>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <StatusBadge label={globalStatusLabel} tone={globalStatusTone} />
           <Button variant="ghost" onClick={() => router.refresh()}>
             Refresh

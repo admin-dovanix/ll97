@@ -16,17 +16,19 @@ export function KPIBlock({
   return (
     <div
       className={cn(
-        "min-w-0 border-b border-border px-5 py-4 md:border-r md:border-b-0",
+        "min-w-0 border-b border-border px-5 py-5 md:border-r md:border-b-0",
         emphasize ? "text-foreground" : "text-muted-foreground"
       )}
     >
-      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">{label}</p>
-      <div className="mt-1 flex items-end gap-2">
-        <p className="text-[2.1rem] font-semibold leading-none tracking-tight text-foreground">{value}</p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-foreground/52">{label}</p>
+      <div className="mt-2 flex items-end gap-2">
+        <p className={cn("text-[28px] font-medium leading-none tracking-[-0.02em]", emphasize ? "text-danger" : "text-foreground")}>
+          {value}
+        </p>
         {trend ? (
           <span
             className={cn(
-              "pb-0.5 font-mono text-[10px] uppercase tracking-[0.18em]",
+              "pb-0.5 font-mono text-[10px] uppercase tracking-[0.14em]",
               trend === "up" ? "text-danger" : trend === "down" ? "text-success" : "text-muted-foreground"
             )}
           >
@@ -34,7 +36,7 @@ export function KPIBlock({
           </span>
         ) : null}
       </div>
-      {detail ? <p className="mt-1 text-xs leading-5 text-foreground/68">{detail}</p> : null}
+      {detail ? <p className="mt-1 text-xs leading-5 text-foreground/58">{detail}</p> : null}
     </div>
   );
 }

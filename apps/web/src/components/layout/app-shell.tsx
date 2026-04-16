@@ -48,7 +48,7 @@ export async function AppShell({
     { href: "/portfolios", label: "Portfolios" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/overview` : "/portfolios", label: "Buildings" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/filing` : "/portfolios", label: "Filing" },
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/compliance` : "/portfolios", label: "Requirements" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/compliance` : "/portfolios", label: "Compliance" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/monitoring` : "/portfolios", label: "Monitoring" },
     {
       href: firstBuildingId ? `/buildings/${firstBuildingId}/recommendations` : "/portfolios",

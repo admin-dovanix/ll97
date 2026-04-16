@@ -3,10 +3,12 @@ import { AppShell } from "../../../../components/layout/app-shell";
 import { PageHeader } from "../../../../components/layout/page-header";
 import { ComplianceWorkspace } from "../../../../components/compliance/compliance-workspace";
 import { StatusBadge } from "../../../../components/ui/status-badge";
+import { WorkflowStoryCard } from "../../../../components/workflow-story-card";
 import { generateRequirementsAction } from "../../../actions";
 import {
   getBuildingComplianceWorkspace,
   getBuildingDocumentsWorkspace,
+  getBuildingMonitoringWorkspace,
   getBuildingWorkspace
 } from "../../../../lib/server-data";
 import { buildingComplianceStatus } from "../../../../lib/status";
@@ -101,13 +103,14 @@ export default async function CompliancePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [building, compliance, documents] = await Promise.all([
+  const [building, compliance, documents, monitoring] = await Promise.all([
     getBuildingWorkspace(id).catch(() => null),
     getBuildingComplianceWorkspace(id).catch(() => null),
-    getBuildingDocumentsWorkspace(id).catch(() => null)
+    getBuildingDocumentsWorkspace(id).catch(() => null),
+    getBuildingMonitoringWorkspace(id).catch(() => null)
   ]);
 
-  if (!building || !compliance || !documents) {
+  if (!building || !compliance || !documents || !monitoring) {
     notFound();
   }
 
@@ -213,6 +216,20 @@ export default async function CompliancePage({
         </section>
       }
     >
+      <WorkflowStoryCard
+        badges={[
+          { label: `${compliance.blockerCount} blockers`, tone: compliance.blockerCount > 0 ? "danger" : "success" },
+          { label: `${compliance.evidenceGapCount} evidence gaps`, tone: compliance.evidenceGapCount > 0 ? "warning" : "success" },
+          { label: `${monitoring.issues.length} monitoring issues`, tone: monitoring.issues.length > 0 ? "warning" : "neutral" }
+        ]}
+        description="Compliance sets the filing agenda. Once the requirements and evidence posture are clear, move straight into the filing workspace to see what is accepted, pending, and still missing."
+        links={[
+          { label: "Go to filing workspace", href: `/buildings/${building.id}/filing` },
+          { label: "Open documents", href: `/buildings/${building.id}/documents`, variant: "secondary" }
+        ]}
+        title="From compliance to filing"
+      />
+
       <ComplianceWorkspace
         auditEvents={documents.auditEvents}
         documents={documents.documents.map((document) => ({

@@ -5,7 +5,13 @@ import { PageHeader } from "../../../../components/layout/page-header";
 import { KPIStrip } from "../../../../components/data-display/kpi-strip";
 import { MonitoringWorkspace } from "../../../../components/monitoring/monitoring-workspace";
 import { StatusBadge } from "../../../../components/ui/status-badge";
-import { getBuildingMonitoringWorkspace, getBuildingWorkspace } from "../../../../lib/server-data";
+import { WorkflowStoryCard } from "../../../../components/workflow-story-card";
+import {
+  getBuildingComplianceWorkspace,
+  getBuildingMonitoringWorkspace,
+  getBuildingReportingWorkspace,
+  getBuildingWorkspace
+} from "../../../../lib/server-data";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +34,14 @@ export default async function MonitoringPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [building, monitoring] = await Promise.all([
+  const [building, monitoring, compliance, filing] = await Promise.all([
     getBuildingWorkspace(id).catch(() => null),
-    getBuildingMonitoringWorkspace(id).catch(() => null)
+    getBuildingMonitoringWorkspace(id).catch(() => null),
+    getBuildingComplianceWorkspace(id).catch(() => null),
+    getBuildingReportingWorkspace(id, 2026).catch(() => null)
   ]);
 
-  if (!building || !monitoring) {
+  if (!building || !monitoring || !compliance || !filing) {
     notFound();
   }
 
@@ -63,6 +71,20 @@ export default async function MonitoringPage({
         />
       }
     >
+      <WorkflowStoryCard
+        badges={[
+          { label: `${issues.length} active issues`, tone: issues.length > 0 ? "warning" : "success" },
+          { label: `${compliance.evidenceGapCount} evidence gaps`, tone: compliance.evidenceGapCount > 0 ? "warning" : "neutral" },
+          { label: filing.cycle.filingStatus.replaceAll("_", " "), tone: filing.cycle.filingStatus === "ready" ? "success" : "warning" }
+        ]}
+        description="Monitoring is not a separate product island. Runtime issues can drive energy waste, change emissions outcomes, and determine what the team should fix before the next filing cycle."
+        links={[
+          { label: "Impact on compliance", href: `/buildings/${building.id}/compliance` },
+          { label: "Open filing workspace", href: `/buildings/${building.id}/filing`, variant: "secondary" }
+        ]}
+        title="Impact on compliance and emissions"
+      />
+
       <MonitoringWorkspace
         buildingId={building.id}
         gateways={gateways.map((gateway) => {

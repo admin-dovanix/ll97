@@ -19,6 +19,8 @@ type PortfolioRow = {
   status: "non-compliant" | "at-risk" | "compliant" | "unknown";
   pathway: string;
   article: string;
+  readinessLabel: string;
+  readinessTone: "success" | "warning" | "danger" | "neutral" | "accent";
   emissionsSignal: string;
   penalty: number;
   openIssues: number;
@@ -75,6 +77,12 @@ export function PortfolioWorkspace({
       )
     },
     {
+      id: "readiness",
+      header: "Readiness",
+      sortValue: (row) => row.readinessLabel,
+      cell: (row) => <StatusBadge label={row.readinessLabel} tone={row.readinessTone} />
+    },
+    {
       id: "emissions",
       header: "Emissions vs limit",
       sortValue: (row) => row.emissionsSignal,
@@ -100,7 +108,7 @@ export function PortfolioWorkspace({
       className: "whitespace-nowrap",
       cell: (row) => (
         <span className="font-medium text-accent" data-no-row-click="true" onClick={(event) => event.stopPropagation()}>
-          <Link href={`/buildings/${row.id}/compliance`}>{row.actionLabel}</Link>
+          <Link href={`/buildings/${row.id}/overview`}>{row.actionLabel}</Link>
         </span>
       )
     }
@@ -110,7 +118,7 @@ export function PortfolioWorkspace({
     <>
       <SectionContainer
         title="Portfolio risk register"
-        description="Rank buildings by penalty exposure, blockers, and active operational issues. Row selection keeps the operator in context while exposing evidence and next steps in a side panel."
+        description="Every building now enters through one overview path. Readiness shows whether the next move is compliance-first, BAS prep, live monitoring, or supervised control."
       >
         <DataTable
           columns={columns}
@@ -246,6 +254,7 @@ export function PortfolioWorkspace({
                 <StatusBadge status={selected.status} />
                 <StatusBadge label={selected.portfolioName} tone="neutral" />
                 <StatusBadge label={`${selected.article} / ${selected.pathway}`} tone="accent" />
+                <StatusBadge label={selected.readinessLabel} tone={selected.readinessTone} />
               </div>
               <div className="grid gap-3 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-3">
                 <div>

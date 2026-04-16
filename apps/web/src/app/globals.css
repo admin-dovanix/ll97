@@ -5,22 +5,29 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 210 24% 96%;
-    --foreground: 220 32% 10%;
-    --muted: 214 20% 90%;
-    --muted-foreground: 218 18% 24%;
-    --border: 214 18% 79%;
-    --accent: 212 78% 42%;
+    --background: 220 20% 95%;
+    --foreground: 222 25% 15%;
+    --muted: 220 17% 91%;
+    --muted-foreground: 220 12% 39%;
+    --border: 220 18% 82%;
+    --border-strong: 220 16% 74%;
+    --accent: 214 73% 51%;
     --accent-foreground: 210 40% 98%;
-    --success: 148 62% 30%;
+    --success: 149 66% 30%;
     --success-foreground: 140 60% 97%;
-    --warning: 34 90% 39%;
+    --warning: 34 88% 36%;
     --warning-foreground: 40 90% 96%;
-    --danger: 4 72% 43%;
+    --danger: 6 61% 46%;
     --danger-foreground: 0 0% 99%;
     --panel: 0 0% 100%;
-    --panel-alt: 210 29% 97%;
-    --overlay: 220 35% 7%;
+    --panel-alt: 220 20% 98%;
+    --panel-muted: 220 20% 96%;
+    --overlay: 224 45% 6%;
+    --sidebar: 225 46% 9%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-muted: 220 14% 66%;
+    --sidebar-active: 214 73% 59%;
+    --sidebar-border: 0 0% 100% / 0.08;
   }
 
   * {
@@ -35,9 +42,7 @@
   body {
     @apply min-h-screen bg-background font-sans text-foreground antialiased;
     margin: 0;
-    background-image:
-      radial-gradient(circle at top right, rgba(37, 99, 235, 0.06), transparent 24%),
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(243, 247, 252, 0.98) 100%);
+    background: hsl(var(--background));
   }
 
   a {
@@ -54,7 +59,8 @@
   input,
   select,
   textarea {
-    @apply min-h-11 rounded-md border border-border bg-panel px-3 text-sm text-foreground outline-none transition-colors duration-200 placeholder:text-muted-foreground focus:border-accent;
+    @apply min-h-11 rounded-md border border-border bg-panelAlt px-3 text-sm text-foreground outline-none transition-colors duration-200 placeholder:text-muted-foreground focus:border-accent focus:bg-panel;
+    box-shadow: none;
   }
 
   textarea {
@@ -64,22 +70,35 @@
 
   label {
     @apply grid gap-1.5 text-xs;
-    color: hsl(var(--foreground) / 0.78);
+    color: hsl(var(--foreground) / 0.8);
   }
 }
 
 @layer utilities {
   .eyebrow {
-    @apply font-mono text-[11px] uppercase tracking-[0.18em];
-    color: hsl(var(--foreground) / 0.6);
+    @apply font-mono text-[10px] uppercase tracking-[0.18em];
+    color: hsl(var(--foreground) / 0.56);
   }
 
   .list {
     @apply grid gap-2 pl-4 text-sm;
-    color: hsl(var(--foreground) / 0.78);
+    color: hsl(var(--foreground) / 0.76);
   }
 
   .metric-divider {
     @apply border-r border-border last:border-r-0;
+  }
+
+  .institutional-link {
+    @apply text-sm font-medium text-accent transition-colors hover:underline;
+  }
+
+  .table-header {
+    @apply font-mono text-[10px] uppercase tracking-[0.14em];
+    color: hsl(var(--foreground) / 0.52);
+  }
+
+  .surface-card {
+    @apply rounded-lg border border-border bg-panel;
   }
 }

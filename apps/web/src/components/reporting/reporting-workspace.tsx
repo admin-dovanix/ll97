@@ -10,6 +10,7 @@ import {
   uploadReportingDocumentAction,
   reviewReportingInputValueAction
 } from "../../app/actions";
+import { getFilingReadinessSummary } from "../../lib/demo-ready";
 import { ActionButton } from "../ui/action-button";
 import { SectionContainer } from "../ui/section-container";
 import { StatusBadge } from "../ui/status-badge";
@@ -48,7 +49,7 @@ type InputValueRow = {
   sourceType: string;
   sourceRef?: string;
   confidenceScore?: number;
-  reviewStatus: string;
+  reviewStatus: "pending_review" | "accepted" | "rejected";
   reviewedAt?: string;
 };
 
@@ -129,30 +130,154 @@ export function ReportingWorkspace({
     return groups;
   }, {});
   const calculationOutputs = latestCalculationRun?.calculationOutputs ?? {};
+  const filingSummary = getFilingReadinessSummary({
+    requiredFieldKeys,
+    fieldDefinitions,
+    inputValues,
+    blockers,
+    latestCalculationRun,
+    filingStatus
+  });
 
   return (
     <>
       <SectionContainer
-        title="Reporting cycle shell"
-        description="The filing workspace is year-scoped so modules, due dates, and blockers stay attached to one reporting package."
+        title="Filing status"
+        description="This page should answer one question immediately: are we ready to file or not, and what still needs attention?"
       >
-        <div className="grid gap-3 md:grid-cols-4">
-          <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
-            <p className="eyebrow">Reporting year</p>
-            <p className="text-lg font-semibold text-foreground">{reportingYear}</p>
+        <div className="grid gap-4">
+          <div className="rounded-md border border-border bg-panelAlt p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="eyebrow">Submission answer</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{filingSummary.readinessLabel}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {filingSummary.readyToFile
+                    ? "All required inputs are accepted and no blockers are currently recorded."
+                    : "At least one required input, review item, or attestation still blocks submission."}
+                </p>
+              </div>
+              <StatusBadge label={filingSummary.readinessLabel} tone={filingSummary.readinessTone} />
+            </div>
           </div>
-          <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
-            <p className="eyebrow">Filing status</p>
-            <StatusBadge label={filingStatus.replaceAll("_", " ")} tone="accent" />
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Complete</p>
+              <p className="text-lg font-semibold text-foreground">{filingSummary.completionPercent}%</p>
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Blockers</p>
+              <p className="text-lg font-semibold text-foreground">{filingSummary.blockerCount}</p>
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Ready inputs</p>
+              <p className="text-lg font-semibold text-foreground">{filingSummary.readyCount}</p>
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Pending inputs</p>
+              <p className="text-lg font-semibold text-foreground">{filingSummary.pendingCount}</p>
+            </div>
           </div>
-          <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
-            <p className="eyebrow">Due date</p>
-            <p className="text-lg font-semibold text-foreground">{formatDate(filingDueDate)}</p>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Filing year</p>
+              <p className="text-lg font-semibold text-foreground">{reportingYear}</p>
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Cycle status</p>
+              <StatusBadge label={filingStatus.replaceAll("_", " ")} tone={filingSummary.readyToFile ? "success" : "warning"} />
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Due date</p>
+              <p className="text-lg font-semibold text-foreground">{formatDate(filingDueDate)}</p>
+            </div>
+            <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+              <p className="eyebrow">Owner match</p>
+              <StatusBadge label={ownerOfRecordStatus.replaceAll("_", " ")} tone={ownerOfRecordStatus === "matched" ? "success" : "warning"} />
+            </div>
           </div>
+        </div>
+      </SectionContainer>
+
+      <SectionContainer
+        title="Required inputs"
+        description="Required fields are separated into accepted, pending review, and missing buckets so filing readiness is obvious."
+      >
+        <div className="grid gap-4 xl:grid-cols-3">
           <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
-            <p className="eyebrow">Owner match</p>
-            <StatusBadge label={ownerOfRecordStatus.replaceAll("_", " ")} tone={ownerOfRecordStatus === "matched" ? "success" : "warning"} />
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium text-foreground">Accepted inputs</p>
+              <StatusBadge label={filingSummary.readyCount.toString()} tone="success" />
+            </div>
+            <div className="mt-3 grid gap-2">
+              {filingSummary.acceptedInputs.length > 0 ? (
+                filingSummary.acceptedInputs.map((item) => (
+                  <div key={item.key} className="rounded-md border border-border/60 bg-panel p-3">
+                    {item.label}
+                  </div>
+                ))
+              ) : (
+                <p>No required inputs are accepted yet.</p>
+              )}
+            </div>
           </div>
+
+          <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium text-foreground">Pending inputs</p>
+              <StatusBadge label={filingSummary.pendingCount.toString()} tone={filingSummary.pendingCount > 0 ? "warning" : "neutral"} />
+            </div>
+            <div className="mt-3 grid gap-2">
+              {filingSummary.pendingInputs.length > 0 ? (
+                filingSummary.pendingInputs.map((item) => (
+                  <div key={item.key} className="rounded-md border border-border/60 bg-panel p-3">
+                    {item.label}
+                  </div>
+                ))
+              ) : (
+                <p>No required inputs are waiting for review.</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium text-foreground">Missing inputs</p>
+              <StatusBadge label={filingSummary.missingCount.toString()} tone={filingSummary.missingCount > 0 ? "danger" : "success"} />
+            </div>
+            <div className="mt-3 grid gap-2">
+              {filingSummary.missingInputs.length > 0 ? (
+                filingSummary.missingInputs.map((item) => (
+                  <div key={item.key} className="rounded-md border border-border/60 bg-panel p-3">
+                    {item.label}
+                  </div>
+                ))
+              ) : (
+                <p>No required inputs are currently missing.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </SectionContainer>
+
+      <SectionContainer
+        title="What’s blocking submission?"
+        description="This list combines workflow blockers, missing required inputs, and review debt into one place."
+      >
+        <div className="grid gap-2">
+          {filingSummary.blockingReasons.length > 0 ? (
+            filingSummary.blockingReasons.map((reason, index) => (
+              <div key={`${reason}-${index}`} className="rounded-md border border-danger/25 bg-danger/8 p-3 text-sm text-foreground/82">
+                {reason}
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border border-success/25 bg-success/8 p-3 text-sm text-foreground/82">
+              No filing blockers are currently recorded.
+            </div>
+          )}
         </div>
       </SectionContainer>
 
@@ -186,7 +311,7 @@ export function ReportingWorkspace({
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionContainer
           title="Document intake"
-          description="Files remain optional, but source documents can generate proposed inputs that a reviewer accepts into the filing package."
+          description="Source documents can generate proposed inputs and support the final submission package."
         >
           <form action={uploadReportingDocumentAction} className="grid gap-3 rounded-md border border-border bg-panelAlt p-4">
             <input name="buildingId" type="hidden" value={buildingId} />
@@ -228,7 +353,7 @@ export function ReportingWorkspace({
                 </form>
               </div>
             ))}
-            {documents.length === 0 ? <p className="text-sm text-muted-foreground">No reporting documents are registered yet.</p> : null}
+            {documents.length === 0 ? <p className="text-sm text-muted-foreground">No filing documents are registered yet.</p> : null}
           </div>
         </SectionContainer>
 
@@ -260,7 +385,7 @@ export function ReportingWorkspace({
 
       <SectionContainer
         title="Input workspace"
-        description="Accepted values are calculation-grade. Proposed values remain review-only until explicitly accepted."
+        description="The detailed input workspace remains available below, but the required-input buckets above should answer readiness first."
       >
         <div className="grid gap-6">
           {Object.entries(inputsByFamily).map(([family, definitions]) => (
@@ -445,17 +570,6 @@ export function ReportingWorkspace({
         </SectionContainer>
       ) : null}
 
-      {blockers.length > 0 ? (
-        <SectionContainer title="Blockers" description="These blockers are rolled up from module state, calculation state, and attestation state.">
-          <div className="grid gap-2">
-            {blockers.map((blocker, index) => (
-              <div key={`${blocker}-${index}`} className="rounded-md border border-border bg-panelAlt p-3 text-sm text-muted-foreground">
-                {blocker}
-              </div>
-            ))}
-          </div>
-        </SectionContainer>
-      ) : null}
     </>
   );
 }

@@ -9,6 +9,7 @@ import {
   getBuildingMonitoringWorkspace,
   listPortfolioWorkspaces
 } from "../../lib/server-data";
+import { getBuildingReadiness } from "../../lib/demo-ready";
 import { buildingComplianceStatus } from "../../lib/status";
 import { formatCurrency, formatPercent } from "../../lib/utils";
 
@@ -36,6 +37,20 @@ export default async function PortfoliosPage() {
         evidenceGapCount: compliance?.evidenceGapCount,
         penalty
       });
+      const readiness = getBuildingReadiness({
+        buildingId: building.id,
+        basPresent: building.basPresent,
+        basVendor: building.basVendor,
+        basProtocol: building.basProtocol,
+        basAccessState: building.basAccessState,
+        pointListAvailable: building.pointListAvailable,
+        schedulesAvailable: building.schedulesAvailable,
+        equipmentInventoryStatus: building.equipmentInventoryStatus,
+        gatewayCount: monitoring?.gateways.length ?? 0,
+        telemetryCount: monitoring?.telemetryEvents.length ?? 0,
+        whitelistedPointCount:
+          monitoring?.basPoints.filter((point) => point.isWritable && point.isWhitelisted).length ?? 0
+      });
 
       return {
         id: building.id,
@@ -46,12 +61,13 @@ export default async function PortfoliosPage() {
         status,
         pathway: building.pathway,
         article: building.article,
+        readinessLabel: readiness.label,
+        readinessTone: readiness.tone,
         emissionsSignal:
           (compliance?.estimatedEmissionsOverLimitPenalty ?? 0) > 0 ? "Above limit estimate" : "Within current estimate",
         penalty,
         openIssues: monitoring?.issues.filter((issue) => issue.status !== "resolved").length ?? 0,
-        actionLabel:
-          status === "non-compliant" ? "Open compliance" : monitoring?.issues.length ? "Review monitoring" : "Open building",
+        actionLabel: readiness.tier === "A" || readiness.tier === "B" ? "Start here" : "Open building",
         blockerCount: compliance?.blockerCount ?? 0,
         evidenceGapCount: compliance?.evidenceGapCount ?? 0,
         topIssues: (monitoring?.issues ?? []).slice(0, 3).map((issue) => issue.summary),

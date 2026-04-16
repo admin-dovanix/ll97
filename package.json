@@ -21,7 +21,8 @@
     "build": "npm run build:packages && npm run build:apps",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
-    "import:public": "tsx scripts/import/import-public-buildings.ts"
+    "import:public": "tsx scripts/import/import-public-buildings.ts",
+    "seed:demo": "node --import tsx ./scripts/seed/demo-data.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",

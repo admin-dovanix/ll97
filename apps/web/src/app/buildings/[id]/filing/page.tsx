@@ -4,12 +4,15 @@ import { PageHeader } from "../../../../components/layout/page-header";
 import { KPIStrip } from "../../../../components/data-display/kpi-strip";
 import { ReportingWorkspace } from "../../../../components/reporting/reporting-workspace";
 import { StatusBadge } from "../../../../components/ui/status-badge";
+import { WorkflowStoryCard } from "../../../../components/workflow-story-card";
 import { createReportingCycleAction } from "../../../actions";
 import {
+  getBuildingMonitoringWorkspace,
   getBuildingReportingWorkspace,
   getBuildingWorkspace,
   getReportingFieldDefinitions
 } from "../../../../lib/server-data";
+import { getBuildingReadiness, getFilingReadinessSummary } from "../../../../lib/demo-ready";
 
 export const dynamic = "force-dynamic";
 
@@ -19,15 +22,38 @@ export default async function FilingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [building, reporting, fieldDefinitions] = await Promise.all([
+  const [building, reporting, fieldDefinitions, monitoring] = await Promise.all([
     getBuildingWorkspace(id).catch(() => null),
     getBuildingReportingWorkspace(id, 2026).catch(() => null),
-    getReportingFieldDefinitions().catch(() => [])
+    getReportingFieldDefinitions().catch(() => []),
+    getBuildingMonitoringWorkspace(id).catch(() => null)
   ]);
 
-  if (!building || !reporting) {
+  if (!building || !reporting || !monitoring) {
     notFound();
   }
+
+  const filingSummary = getFilingReadinessSummary({
+    requiredFieldKeys: reporting.requiredFieldKeys,
+    fieldDefinitions,
+    inputValues: reporting.inputValues,
+    blockers: reporting.blockers,
+    latestCalculationRun: reporting.latestCalculationRun,
+    filingStatus: reporting.cycle.filingStatus
+  });
+  const readiness = getBuildingReadiness({
+    buildingId: building.id,
+    basPresent: building.basPresent,
+    basVendor: building.basVendor,
+    basProtocol: building.basProtocol,
+    basAccessState: building.basAccessState,
+    pointListAvailable: building.pointListAvailable,
+    schedulesAvailable: building.schedulesAvailable,
+    equipmentInventoryStatus: building.equipmentInventoryStatus,
+    gatewayCount: monitoring.gateways.length,
+    telemetryCount: monitoring.telemetryEvents.length,
+    whitelistedPointCount: monitoring.basPoints.filter((point) => point.isWritable && point.isWhitelisted).length
+  });
 
   return (
     <AppShell
@@ -45,7 +71,7 @@ export default async function FilingPage({
               </button>
             </form>
           }
-          description="The filing workspace organizes intake, review, advanced modules, and calculation outputs around one reporting-year package."
+          description="This page answers one question fast: are we ready to file or not, and what still blocks submission?"
           eyebrow="Filing"
           status={<StatusBadge label={`${reporting.cycle.articleSnapshot} / ${reporting.cycle.pathwaySnapshot}`} tone="accent" />}
           title={`${building.name} filing workspace`}
@@ -54,14 +80,28 @@ export default async function FilingPage({
       kpis={
         <KPIStrip
           items={[
-            { label: "Cycle status", value: reporting.cycle.filingStatus.replaceAll("_", " "), emphasize: true },
-            { label: "Modules", value: reporting.modules.length.toString() },
-            { label: "Accepted inputs", value: reporting.inputValues.filter((value) => value.reviewStatus === "accepted").length.toString() },
-            { label: "Blockers", value: reporting.blockers.length.toString() }
+            { label: "Ready to file", value: filingSummary.readinessLabel, emphasize: true },
+            { label: "Complete", value: `${filingSummary.completionPercent}%` },
+            { label: "Ready inputs", value: filingSummary.readyCount.toString() },
+            { label: "Blockers", value: filingSummary.blockerCount.toString() }
           ]}
         />
       }
     >
+      <WorkflowStoryCard
+        badges={[
+          { label: readiness.label, tone: readiness.tone },
+          { label: `${filingSummary.pendingCount} pending review`, tone: filingSummary.pendingCount > 0 ? "warning" : "neutral" },
+          { label: `${filingSummary.missingCount} missing`, tone: filingSummary.missingCount > 0 ? "danger" : "success" }
+        ]}
+        description="Filing is the bridge between compliance posture and building operations. Once the package is stable, move into monitoring to improve performance and defend future filings."
+        links={[
+          { label: "Review compliance", href: `/buildings/${building.id}/compliance`, variant: "secondary" },
+          { label: "Improve building performance", href: `/buildings/${building.id}/monitoring` }
+        ]}
+        title="From filing to performance"
+      />
+
       <ReportingWorkspace
         attestations={reporting.attestations}
         blockers={reporting.blockers}

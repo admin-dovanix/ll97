@@ -15,6 +15,7 @@ export default async function LoginPage() {
   }
 
   const users = listAppUsers();
+  const demoOwner = users.find((user) => user.email === "owner@airwise.local") ?? users[0];
 
   return (
     <main className="min-h-screen bg-background px-4 py-10 text-foreground lg:px-6">
@@ -58,6 +59,27 @@ export default async function LoginPage() {
               <ActionButton type="submit">Start session</ActionButton>
             </form>
           </section>
+
+          {demoOwner ? (
+            <section className="rounded-md border border-accent/25 bg-accent/8 p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow">Demo mode</p>
+                  <p className="mt-2 text-lg font-semibold tracking-tight text-foreground">Start the seeded walkthrough</p>
+                </div>
+                <StatusBadge label="Seeded demo" tone="accent" />
+              </div>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Enter the workspace with the seeded owner account to see a compliance-first building and a connected,
+                control-ready building without any external integrations.
+              </p>
+              <form action={loginAction} className="mt-4">
+                <input name="email" type="hidden" value={demoOwner.email} />
+                {demoOwner.memberships[0] ? <input name="membershipId" type="hidden" value={demoOwner.memberships[0].id} /> : null}
+                <ActionButton type="submit">Enter demo workspace</ActionButton>
+              </form>
+            </section>
+          ) : null}
         </section>
 
         <section className="grid gap-4">

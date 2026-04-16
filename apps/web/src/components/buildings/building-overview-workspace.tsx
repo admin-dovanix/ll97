@@ -205,114 +205,116 @@ export function BuildingOverviewWorkspace({
         </SectionContainer>
       </div>
 
-      <SectionContainer
-        title="BAS and systems profile"
-        description="Capture the minimum BAS and ventilation-system context needed to classify a building before live telemetry exists."
-      >
-        <form action={updateBuildingBasProfileAction} className="grid gap-4 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-2">
-          <input name="buildingId" type="hidden" value={buildingId} />
+      <div id="bas-profile">
+        <SectionContainer
+          title="BAS and systems profile"
+          description="Capture the minimum BAS and ventilation-system context needed to classify a building before live telemetry exists."
+        >
+          <form action={updateBuildingBasProfileAction} className="grid gap-4 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-2">
+            <input name="buildingId" type="hidden" value={buildingId} />
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            BAS present
-            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basPresent} name="basPresent">
-              {availabilityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              BAS present
+              <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basPresent} name="basPresent">
+                {availabilityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            BAS vendor
-            <input
-              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
-              defaultValue={basProfile.basVendor ?? ""}
-              name="basVendor"
-              placeholder="Siemens, Alerton, Johnson Controls..."
-              type="text"
-            />
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              BAS vendor
+              <input
+                className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+                defaultValue={basProfile.basVendor ?? ""}
+                name="basVendor"
+                placeholder="Siemens, Alerton, Johnson Controls..."
+                type="text"
+              />
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            BAS protocol
-            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basProtocol} name="basProtocol">
-              {basProtocolOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              BAS protocol
+              <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basProtocol} name="basProtocol">
+                {basProtocolOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            BAS access state
-            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basAccessState} name="basAccessState">
-              {basAccessOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              BAS access state
+              <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basAccessState} name="basAccessState">
+                {basAccessOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            Point list available
-            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.pointListAvailable} name="pointListAvailable">
-              {availabilityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              Point list available
+              <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.pointListAvailable} name="pointListAvailable">
+                {availabilityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            Schedules available
-            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.schedulesAvailable} name="schedulesAvailable">
-              {availabilityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              Schedules available
+              <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.schedulesAvailable} name="schedulesAvailable">
+                {availabilityOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            Ventilation system archetype
-            <select
-              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
-              defaultValue={basProfile.ventilationSystemArchetype}
-              name="ventilationSystemArchetype"
-            >
-              {archetypeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              Ventilation system archetype
+              <select
+                className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+                defaultValue={basProfile.ventilationSystemArchetype}
+                name="ventilationSystemArchetype"
+              >
+                {archetypeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="grid gap-2 text-sm text-muted-foreground">
-            Equipment inventory status
-            <select
-              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
-              defaultValue={basProfile.equipmentInventoryStatus}
-              name="equipmentInventoryStatus"
-            >
-              {inventoryOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+            <label className="grid gap-2 text-sm text-muted-foreground">
+              Equipment inventory status
+              <select
+                className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+                defaultValue={basProfile.equipmentInventoryStatus}
+                name="equipmentInventoryStatus"
+              >
+                {inventoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <div className="md:col-span-2 flex justify-end">
-            <ActionButton type="submit">Save BAS profile</ActionButton>
-          </div>
-        </form>
-      </SectionContainer>
+            <div className="md:col-span-2 flex justify-end">
+              <ActionButton type="submit">Save BAS profile</ActionButton>
+            </div>
+          </form>
+        </SectionContainer>
+      </div>
 
       <SectionContainer title="Recent activity" description="Recent audit events provide the operational history for coverage resolution, document linkage, and other building-level changes.">
         <div className="grid gap-3">

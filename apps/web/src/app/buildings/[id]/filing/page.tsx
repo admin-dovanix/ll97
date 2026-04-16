@@ -1,0 +1,90 @@
+import { notFound } from "next/navigation";
+import { AppShell } from "../../../../components/layout/app-shell";
+import { PageHeader } from "../../../../components/layout/page-header";
+import { KPIStrip } from "../../../../components/data-display/kpi-strip";
+import { ReportingWorkspace } from "../../../../components/reporting/reporting-workspace";
+import { StatusBadge } from "../../../../components/ui/status-badge";
+import { createReportingCycleAction } from "../../../actions";
+import {
+  getBuildingReportingWorkspace,
+  getBuildingWorkspace,
+  getReportingFieldDefinitions
+} from "../../../../lib/server-data";
+
+export const dynamic = "force-dynamic";
+
+export default async function FilingPage({
+  params
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const [building, reporting, fieldDefinitions] = await Promise.all([
+    getBuildingWorkspace(id).catch(() => null),
+    getBuildingReportingWorkspace(id, 2026).catch(() => null),
+    getReportingFieldDefinitions().catch(() => [])
+  ]);
+
+  if (!building || !reporting) {
+    notFound();
+  }
+
+  return (
+    <AppShell
+      buildingSection="filing"
+      currentBuildingId={building.id}
+      currentPortfolioId={building.portfolioId}
+      header={
+        <PageHeader
+          actions={
+            <form action={createReportingCycleAction}>
+              <input name="buildingId" type="hidden" value={building.id} />
+              <input name="reportingYear" type="hidden" value="2026" />
+              <button className="inline-flex min-h-11 items-center rounded-md border border-accent bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90" type="submit">
+                Refresh 2026 cycle
+              </button>
+            </form>
+          }
+          description="The filing workspace organizes intake, review, advanced modules, and calculation outputs around one reporting-year package."
+          eyebrow="Filing"
+          status={<StatusBadge label={`${reporting.cycle.articleSnapshot} / ${reporting.cycle.pathwaySnapshot}`} tone="accent" />}
+          title={`${building.name} filing workspace`}
+        />
+      }
+      kpis={
+        <KPIStrip
+          items={[
+            { label: "Cycle status", value: reporting.cycle.filingStatus.replaceAll("_", " "), emphasize: true },
+            { label: "Modules", value: reporting.modules.length.toString() },
+            { label: "Accepted inputs", value: reporting.inputValues.filter((value) => value.reviewStatus === "accepted").length.toString() },
+            { label: "Blockers", value: reporting.blockers.length.toString() }
+          ]}
+        />
+      }
+    >
+      <ReportingWorkspace
+        attestations={reporting.attestations}
+        blockers={reporting.blockers}
+        buildingId={building.id}
+        documents={reporting.documents.map((document) => ({
+          id: document.id,
+          documentType: document.documentType,
+          documentCategory: document.documentCategory,
+          fileUrl: document.fileUrl,
+          parsedStatus: document.parsedStatus
+        }))}
+        fieldDefinitions={fieldDefinitions}
+        filingDueDate={reporting.cycle.filingDueDate}
+        filingStatus={reporting.cycle.filingStatus}
+        inputValues={reporting.inputValues}
+        latestCalculationRun={reporting.latestCalculationRun}
+        modules={reporting.modules}
+        ownerOfRecordStatus={reporting.cycle.ownerOfRecordStatus}
+        pecmStatuses={reporting.pecmStatuses}
+        reportingCycleId={reporting.cycle.id}
+        reportingYear={reporting.cycle.reportingYear}
+        requiredFieldKeys={reporting.requiredFieldKeys}
+      />
+    </AppShell>
+  );
+}

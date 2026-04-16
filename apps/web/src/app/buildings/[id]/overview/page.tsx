@@ -103,6 +103,16 @@ export default async function BuildingOverviewPage({
 
       <BuildingOverviewWorkspace
         auditEvents={documents.auditEvents}
+        basProfile={{
+          basPresent: building.basPresent,
+          basVendor: building.basVendor,
+          basProtocol: building.basProtocol,
+          basAccessState: building.basAccessState,
+          pointListAvailable: building.pointListAvailable,
+          schedulesAvailable: building.schedulesAvailable,
+          ventilationSystemArchetype: building.ventilationSystemArchetype,
+          equipmentInventoryStatus: building.equipmentInventoryStatus
+        }}
         buildingId={building.id}
         candidates={publicSources.candidates.map((candidate) => ({
           id: candidate.id,

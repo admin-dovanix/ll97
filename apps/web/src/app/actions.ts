@@ -11,24 +11,34 @@ import {
   switchCurrentMembership
 } from "../lib/auth";
 import {
+  activateReportingModule,
   attachDocumentEvidence,
   autoMatchPublicBuildingRecord,
   approveControlCommand,
+  calculateReportingCycle,
   createPortfolioMembership,
   createControlCommand,
   createDocument,
+  createOrRefreshReportingCycle,
   createPortfolio,
   createRecommendationAction,
+  extractDocumentIntoReportingInputs,
   generateComplianceRequirements,
   getControlCommandById,
   ingestSensorReading,
   ingestBacnetGatewayDiscoverySnapshot,
   importBuildings,
+  registerReportingDocument,
   replayMonitoringScenario,
   registerBacnetGateway,
+  reviewReportingInputValue,
   resolveCoverageRecord,
   startDiscoveryRun,
+  upsertArticle321PecmStatus,
+  upsertReportingAttestation,
+  upsertReportingInputValue,
   updateBacnetGatewayConfiguration,
+  updateBuildingBasProfile,
   updateRecommendationActionStatus,
   updateBasPointMapping
 } from "@airwise/database";
@@ -56,6 +66,29 @@ function optionalNumber(formData: FormData, key: string) {
 
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function parseManualInputValue(valueText: string) {
+  const trimmed = valueText.trim();
+
+  if (trimmed === "true") {
+    return true;
+  }
+
+  if (trimmed === "false") {
+    return false;
+  }
+
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && /^-?\d+(\.\d+)?$/.test(trimmed) ? numeric : trimmed;
 }
 
 export async function createPortfolioAction(formData: FormData) {
@@ -180,11 +213,161 @@ export async function resolveCoverageAction(formData: FormData) {
   revalidatePath("/portfolios");
 }
 
+export async function updateBuildingBasProfileAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  const access = await requireBuildingAccess(buildingId, ["owner", "operator", "rdp", "rcxa"]);
+
+  updateBuildingBasProfile({
+    buildingId,
+    basPresent: requireString(formData, "basPresent") as "yes" | "no" | "unknown",
+    basVendor: optionalString(formData, "basVendor"),
+    basProtocol: requireString(formData, "basProtocol") as
+      | "unknown"
+      | "bacnet_ip"
+      | "bacnet_mstp"
+      | "modbus"
+      | "proprietary"
+      | "other",
+    basAccessState: requireString(formData, "basAccessState") as
+      | "unknown"
+      | "no_access"
+      | "vendor_required"
+      | "exports_available"
+      | "direct_access_available",
+    pointListAvailable: requireString(formData, "pointListAvailable") as "yes" | "no" | "unknown",
+    schedulesAvailable: requireString(formData, "schedulesAvailable") as "yes" | "no" | "unknown",
+    ventilationSystemArchetype: requireString(formData, "ventilationSystemArchetype") as
+      | "unknown"
+      | "central_exhaust"
+      | "make_up_air_unit"
+      | "corridor_ahu"
+      | "garage_ventilation"
+      | "mixed_central",
+    equipmentInventoryStatus: requireString(formData, "equipmentInventoryStatus") as
+      | "unknown"
+      | "not_started"
+      | "partial"
+      | "complete",
+    actorType: access.membership.role
+  });
+
+  revalidatePath(`/buildings/${buildingId}/overview`);
+}
+
 export async function generateRequirementsAction(formData: FormData) {
   const buildingId = requireString(formData, "buildingId");
   await requireBuildingAccess(buildingId, ["owner", "rdp"]);
   generateComplianceRequirements(buildingId, Number(optionalString(formData, "reportingYear") ?? "2026"));
   revalidatePath(`/buildings/${buildingId}/compliance`);
+}
+
+export async function createReportingCycleAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  createOrRefreshReportingCycle(buildingId, Number(optionalString(formData, "reportingYear") ?? "2026"));
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function uploadReportingDocumentAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  registerReportingDocument({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    documentType: requireString(formData, "documentType"),
+    documentCategory: requireString(formData, "documentCategory") as
+      | "espm_export"
+      | "utility_bill"
+      | "prior_ll97_report"
+      | "engineering_report"
+      | "owner_attestation",
+    fileUrl: optionalString(formData, "fileUrl")
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function extractReportingDocumentAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  extractDocumentIntoReportingInputs(requireString(formData, "documentId"));
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function saveReportingInputValueAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  upsertReportingInputValue({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    fieldKey: requireString(formData, "fieldKey"),
+    value: parseManualInputValue(requireString(formData, "valueText"))
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function reviewReportingInputValueAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  reviewReportingInputValue({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    inputValueId: requireString(formData, "inputValueId"),
+    reviewStatus: requireString(formData, "reviewStatus") as "pending_review" | "accepted" | "rejected"
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function activateReportingModuleAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp"]);
+  activateReportingModule({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    moduleType: requireString(formData, "moduleType") as
+      | "extension"
+      | "article_320_report"
+      | "article_321_report"
+      | "deductions"
+      | "adjustment_320_7"
+      | "adjustment_320_8_320_9"
+      | "penalty_mitigation"
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function calculateReportingCycleAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  calculateReportingCycle(requireString(formData, "reportingCycleId"));
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function updateReportingAttestationAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  upsertReportingAttestation({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    role: requireString(formData, "role") as "owner" | "rdp" | "rcxa",
+    signerName: optionalString(formData, "signerName"),
+    ownerOfRecordMatchStatus: requireString(formData, "ownerOfRecordMatchStatus") as "unknown" | "matched" | "mismatch",
+    completionStatus: requireString(formData, "completionStatus") as "pending" | "completed"
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
+}
+
+export async function updateArticle321PecmAction(formData: FormData) {
+  const buildingId = requireString(formData, "buildingId");
+  await requireBuildingAccess(buildingId, ["owner", "rdp", "rcxa"]);
+  upsertArticle321PecmStatus({
+    reportingCycleId: requireString(formData, "reportingCycleId"),
+    pecmKey: requireString(formData, "pecmKey"),
+    applicability: requireString(formData, "applicability") as "required" | "not_applicable" | "unknown",
+    complianceStatus: requireString(formData, "complianceStatus") as
+      | "in_compliance"
+      | "not_in_compliance"
+      | "not_applicable"
+      | "unknown",
+    evidenceState: requireString(formData, "evidenceState") as "missing" | "pending_review" | "accepted" | "rejected",
+    reviewerRole: requireString(formData, "reviewerRole") as "owner" | "rdp" | "rcxa",
+    notes: optionalString(formData, "notes")
+  });
+  revalidatePath(`/buildings/${buildingId}/filing`);
 }
 
 export async function startDiscoveryRunAction(formData: FormData) {

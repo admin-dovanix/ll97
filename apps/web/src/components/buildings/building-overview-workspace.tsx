@@ -1,6 +1,6 @@
 "use client";
 
-import { autoMatchPublicRecordAction, resolveCoverageAction } from "../../app/actions";
+import { autoMatchPublicRecordAction, resolveCoverageAction, updateBuildingBasProfileAction } from "../../app/actions";
 import { useState } from "react";
 import { DataTable, type DataTableColumn } from "../data-display/data-table";
 import { SidePanel } from "../panels/side-panel";
@@ -37,13 +37,65 @@ type AuditRow = {
   createdAt: string;
 };
 
+type BasProfile = {
+  basPresent: "yes" | "no" | "unknown";
+  basVendor?: string;
+  basProtocol: "unknown" | "bacnet_ip" | "bacnet_mstp" | "modbus" | "proprietary" | "other";
+  basAccessState: "unknown" | "no_access" | "vendor_required" | "exports_available" | "direct_access_available";
+  pointListAvailable: "yes" | "no" | "unknown";
+  schedulesAvailable: "yes" | "no" | "unknown";
+  ventilationSystemArchetype: "unknown" | "central_exhaust" | "make_up_air_unit" | "corridor_ahu" | "garage_ventilation" | "mixed_central";
+  equipmentInventoryStatus: "unknown" | "not_started" | "partial" | "complete";
+};
+
+const availabilityOptions: Array<{ value: BasProfile["basPresent"]; label: string }> = [
+  { value: "unknown", label: "Unknown" },
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" }
+];
+
+const basProtocolOptions: Array<{ value: BasProfile["basProtocol"]; label: string }> = [
+  { value: "unknown", label: "Unknown" },
+  { value: "bacnet_ip", label: "BACnet/IP" },
+  { value: "bacnet_mstp", label: "BACnet MS/TP" },
+  { value: "modbus", label: "Modbus" },
+  { value: "proprietary", label: "Proprietary" },
+  { value: "other", label: "Other" }
+];
+
+const basAccessOptions: Array<{ value: BasProfile["basAccessState"]; label: string }> = [
+  { value: "unknown", label: "Unknown" },
+  { value: "no_access", label: "No access" },
+  { value: "vendor_required", label: "Vendor required" },
+  { value: "exports_available", label: "Exports available" },
+  { value: "direct_access_available", label: "Direct access available" }
+];
+
+const archetypeOptions: Array<{ value: BasProfile["ventilationSystemArchetype"]; label: string }> = [
+  { value: "unknown", label: "Unknown" },
+  { value: "central_exhaust", label: "Central exhaust" },
+  { value: "make_up_air_unit", label: "Make-up air unit" },
+  { value: "corridor_ahu", label: "Corridor AHU" },
+  { value: "garage_ventilation", label: "Garage ventilation" },
+  { value: "mixed_central", label: "Mixed central" }
+];
+
+const inventoryOptions: Array<{ value: BasProfile["equipmentInventoryStatus"]; label: string }> = [
+  { value: "unknown", label: "Unknown" },
+  { value: "not_started", label: "Not started" },
+  { value: "partial", label: "Partial" },
+  { value: "complete", label: "Complete" }
+];
+
 export function BuildingOverviewWorkspace({
   auditEvents,
+  basProfile,
   buildingId,
   candidates,
   matches
 }: {
   auditEvents: AuditRow[];
+  basProfile: BasProfile;
   buildingId: string;
   candidates: CandidateRow[];
   matches: MatchRow[];
@@ -152,6 +204,115 @@ export function BuildingOverviewWorkspace({
           <DataTable columns={matchColumns} data={matches} emptyMessage="No public source matches have been confirmed yet." />
         </SectionContainer>
       </div>
+
+      <SectionContainer
+        title="BAS and systems profile"
+        description="Capture the minimum BAS and ventilation-system context needed to classify a building before live telemetry exists."
+      >
+        <form action={updateBuildingBasProfileAction} className="grid gap-4 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-2">
+          <input name="buildingId" type="hidden" value={buildingId} />
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            BAS present
+            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basPresent} name="basPresent">
+              {availabilityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            BAS vendor
+            <input
+              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+              defaultValue={basProfile.basVendor ?? ""}
+              name="basVendor"
+              placeholder="Siemens, Alerton, Johnson Controls..."
+              type="text"
+            />
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            BAS protocol
+            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basProtocol} name="basProtocol">
+              {basProtocolOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            BAS access state
+            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.basAccessState} name="basAccessState">
+              {basAccessOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            Point list available
+            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.pointListAvailable} name="pointListAvailable">
+              {availabilityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            Schedules available
+            <select className="rounded-md border border-border bg-panel px-3 py-2 text-foreground" defaultValue={basProfile.schedulesAvailable} name="schedulesAvailable">
+              {availabilityOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            Ventilation system archetype
+            <select
+              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+              defaultValue={basProfile.ventilationSystemArchetype}
+              name="ventilationSystemArchetype"
+            >
+              {archetypeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2 text-sm text-muted-foreground">
+            Equipment inventory status
+            <select
+              className="rounded-md border border-border bg-panel px-3 py-2 text-foreground"
+              defaultValue={basProfile.equipmentInventoryStatus}
+              name="equipmentInventoryStatus"
+            >
+              {inventoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="md:col-span-2 flex justify-end">
+            <ActionButton type="submit">Save BAS profile</ActionButton>
+          </div>
+        </form>
+      </SectionContainer>
 
       <SectionContainer title="Recent activity" description="Recent audit events provide the operational history for coverage resolution, document linkage, and other building-level changes.">
         <div className="grid gap-3">

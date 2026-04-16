@@ -5,7 +5,9 @@ import {
   getComplianceSummaryByBuildingId,
   getControlCommandById,
   getDocumentWorkspaceByBuildingId,
+  getReportingWorkspaceByBuildingId,
   getPortfolioWorkspace,
+  listReportingInputFieldDefinitions,
   listBacnetGatewaysByBuildingId,
   listBasPointsByBuildingId,
   listControlCommands,
@@ -75,6 +77,16 @@ export async function getBuildingMonitoringWorkspace(buildingId: string) {
 export async function getBuildingDocumentsWorkspace(buildingId: string) {
   await requireBuildingAccess(buildingId);
   return getDocumentWorkspaceByBuildingId(buildingId);
+}
+
+export async function getBuildingReportingWorkspace(buildingId: string, reportingYear = 2026) {
+  await requireBuildingAccess(buildingId);
+  return getReportingWorkspaceByBuildingId(buildingId, reportingYear);
+}
+
+export async function getReportingFieldDefinitions() {
+  await requireActiveRole(["owner", "rdp", "rcxa"]);
+  return listReportingInputFieldDefinitions();
 }
 
 export async function getBuildingPublicSourceWorkspace(buildingId: string) {

@@ -4,23 +4,53 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import type {
+  Article321PecmStatus,
+  Article321PathwayMode,
+  AttestationRole,
+  CalculationRun,
+  DocumentExtraction,
   AuditActorType,
   AuditEvent,
   BeforeAfterSummary,
   Building,
+  BuildingAvailability,
+  BuildingBasAccessState,
+  BuildingBasProtocol,
   BuildingComplianceSummary,
   CompliancePathway,
   ComplianceRequirement,
+  EquipmentInventoryStatus,
   EvidenceLinkStatus,
+  FilingAttestation,
+  FilingModule,
+  FilingModuleStatus,
+  FilingModuleType,
   MonitoringPointType,
   MonitoringIssue,
+  OwnerRecordMatchStatus,
+  PecmApplicability,
+  PecmComplianceStatus,
   RecommendationAction,
-  RecommendationActionStatus
+  RecommendationActionStatus,
+  ReportingCycle,
+  ReportingCycleStatus,
+  ReportingDocument,
+  ReportingDocumentCategory,
+  ReportingDocumentParsedStatus,
+  ReportingInputFieldFamily,
+  ReportingInputPackage,
+  ReportingInputReviewStatus,
+  ReportingInputSourceType,
+  ReportingInputValue,
+  ReportingPackageStatus,
+  ReportingWorkspace,
+  VentilationSystemArchetype
 } from "@airwise/domain";
 import {
   calculateEmissionsPenalty,
   calculateLateReportPenalty,
   canonicalPointTypes,
+  pecmCatalog,
   pathwayMetadata,
   writablePointTypes
 } from "@airwise/rules";
@@ -35,7 +65,9 @@ export const initialMigrations = [
   "0007_auth_sessions.sql",
   "0008_bacnet_gateways.sql",
   "0009_gateway_runtime.sql",
-  "0010_gateway_runtime_health.sql"
+  "0010_gateway_runtime_health.sql",
+  "0011_building_bas_profile.sql",
+  "0012_reporting_cycles.sql"
 ] as const;
 
 export const seedFiles = ["ll97-config.json"] as const;
@@ -257,6 +289,20 @@ function reconcileSeedData(db: DatabaseSync) {
     "owner",
     null
   );
+
+  db.prepare(
+    `UPDATE buildings
+     SET
+       bas_present = COALESCE(NULLIF(bas_present, ''), 'yes'),
+       bas_vendor = COALESCE(bas_vendor, 'Pilot BAS'),
+       bas_protocol = COALESCE(NULLIF(bas_protocol, ''), 'bacnet_ip'),
+       bas_access_state = COALESCE(NULLIF(bas_access_state, ''), 'exports_available'),
+       point_list_available = COALESCE(NULLIF(point_list_available, ''), 'yes'),
+       schedules_available = COALESCE(NULLIF(schedules_available, ''), 'yes'),
+       ventilation_system_archetype = COALESCE(NULLIF(ventilation_system_archetype, ''), 'garage_ventilation'),
+       equipment_inventory_status = COALESCE(NULLIF(equipment_inventory_status, ''), 'partial')
+     WHERE id = ?`
+  ).run(sampleBuilding.id);
 
   if (sampleBuilding.article === "321") {
     upsertRequirement.run(
@@ -488,14 +534,20 @@ export type BuildingImportResult = {
   needsReview: number;
 };
 
-export type DocumentRecord = {
-  id: string;
+export type UpdateBuildingBasProfileInput = {
   buildingId: string;
-  documentType: string;
-  fileUrl: string;
-  classificationConfidence?: number;
-  status: string;
+  basPresent?: BuildingAvailability;
+  basVendor?: string;
+  basProtocol?: BuildingBasProtocol;
+  basAccessState?: BuildingBasAccessState;
+  pointListAvailable?: BuildingAvailability;
+  schedulesAvailable?: BuildingAvailability;
+  ventilationSystemArchetype?: VentilationSystemArchetype;
+  equipmentInventoryStatus?: EquipmentInventoryStatus;
+  actorType?: AuditActorType;
 };
+
+export type DocumentRecord = ReportingDocument;
 
 export type BasPointRecord = {
   id: string;
@@ -576,6 +628,14 @@ export type DocumentWorkspace = {
   requirements: ComplianceRequirement[];
   evidenceLinks: EvidenceLinkRecord[];
   auditEvents: AuditEvent[];
+};
+
+export type ReportingInputFieldDefinition = {
+  key: string;
+  label: string;
+  family: ReportingInputFieldFamily;
+  inputHint: "text" | "number" | "boolean" | "json" | "enum";
+  manualConfirmationRequired?: boolean;
 };
 
 export type PublicBuildingRecord = {
@@ -669,6 +729,74 @@ export type TelemetryEventRecord = {
   unit?: string;
   qualityFlag?: string;
 };
+
+const reportingFieldDefinitions = [
+  { key: "bbl", label: "BBL", family: "identity", inputHint: "text" },
+  { key: "bin", label: "BIN", family: "identity", inputHint: "text" },
+  { key: "address", label: "Address", family: "identity", inputHint: "text" },
+  { key: "reporting_year", label: "Reporting year", family: "identity", inputHint: "number" },
+  { key: "covered_status", label: "Covered status", family: "coverage", inputHint: "text" },
+  { key: "article", label: "Article", family: "coverage", inputHint: "text" },
+  { key: "pathway", label: "Pathway", family: "coverage", inputHint: "text" },
+  { key: "cbl_version", label: "CBL version", family: "coverage", inputHint: "text" },
+  { key: "cbl_dispute_status", label: "CBL dispute status", family: "coverage", inputHint: "text", manualConfirmationRequired: true },
+  { key: "espm_property_id", label: "ESPM property ID", family: "espm", inputHint: "text" },
+  { key: "espm_property_name", label: "ESPM property name", family: "espm", inputHint: "text" },
+  { key: "espm_shared_with_city", label: "ESPM shared with city", family: "espm", inputHint: "boolean", manualConfirmationRequired: true },
+  { key: "duplicate_pmid_flag", label: "Duplicate PMID flag", family: "espm", inputHint: "boolean" },
+  { key: "meter_count", label: "Meter count", family: "energy", inputHint: "number" },
+  { key: "gross_square_feet", label: "Gross square feet", family: "area", inputHint: "number" },
+  { key: "gross_floor_area_total", label: "Gross floor area total", family: "area", inputHint: "number" },
+  { key: "gfa_by_property_type", label: "GFA by property type", family: "area", inputHint: "json" },
+  { key: "energy_by_source", label: "Annual energy by source", family: "energy", inputHint: "json" },
+  { key: "article_321_pathway_mode", label: "Article 321 pathway mode", family: "workflow", inputHint: "enum", manualConfirmationRequired: true },
+  { key: "prior_year_compliance_status", label: "Prior year compliance status", family: "workflow", inputHint: "text", manualConfirmationRequired: true },
+  { key: "methods_used_to_comply", label: "Methods used to comply", family: "workflow", inputHint: "text", manualConfirmationRequired: true },
+  { key: "pathway_dispute_rationale", label: "Pathway dispute rationale", family: "workflow", inputHint: "text", manualConfirmationRequired: true },
+  { key: "extension_requested", label: "Extension requested", family: "extension", inputHint: "boolean", manualConfirmationRequired: true },
+  { key: "deduction_template_version", label: "Deduction template version", family: "deductions", inputHint: "text" },
+  { key: "tou_inputs", label: "TOU inputs", family: "deductions", inputHint: "json" },
+  { key: "tes_inputs", label: "TES inputs", family: "deductions", inputHint: "json" },
+  { key: "beneficial_electrification_banking", label: "Beneficial electrification banking", family: "deductions", inputHint: "json", manualConfirmationRequired: true },
+  { key: "constraint_type", label: "320.7 constraint type", family: "adjustment_320_7", inputHint: "text", manualConfirmationRequired: true },
+  { key: "constraint_term", label: "320.7 constraint term", family: "adjustment_320_7", inputHint: "text", manualConfirmationRequired: true },
+  { key: "offsets_purchased", label: "Offsets purchased", family: "adjustment_320_7", inputHint: "boolean", manualConfirmationRequired: true },
+  { key: "supporting_plan_status", label: "Supporting plan status", family: "adjustment_320_7", inputHint: "text", manualConfirmationRequired: true },
+  { key: "approved_adjustment_type", label: "Approved adjustment type", family: "adjustment_320_8_320_9", inputHint: "text", manualConfirmationRequired: true },
+  { key: "approval_reference", label: "Approval reference", family: "adjustment_320_8_320_9", inputHint: "text", manualConfirmationRequired: true },
+  { key: "carryforward_from_2025", label: "Carryforward from 2025", family: "adjustment_320_8_320_9", inputHint: "boolean", manualConfirmationRequired: true },
+  { key: "mitigation_requested", label: "Mitigation requested", family: "mitigation", inputHint: "boolean", manualConfirmationRequired: true },
+  { key: "good_faith_efforts", label: "Good faith efforts", family: "mitigation", inputHint: "json", manualConfirmationRequired: true },
+  { key: "prior_compliant_report_reference", label: "Prior compliant report reference", family: "mitigation", inputHint: "text", manualConfirmationRequired: true }
+] as const satisfies ReadonlyArray<ReportingInputFieldDefinition>;
+
+const reportingFieldDefinitionByKey = new Map<string, ReportingInputFieldDefinition>(
+  reportingFieldDefinitions.map((definition) => [definition.key, definition] as const)
+);
+
+const defaultReportingDueDate = "2026-06-30";
+const defaultExtendedDueDate = "2026-08-29";
+const calculationVersion = "ll97-2026-v1";
+
+const energyEmissionFactors = {
+  electricity_kwh: 0.000288962,
+  natural_gas_therms: 0.005302,
+  district_steam_mlbs: 52.44,
+  fuel_oil_2_gallons: 0.01021,
+  fuel_oil_4_gallons: 0.01137
+} as const;
+
+const propertyTypeLimitFactors: Record<string, number> = {
+  multifamily: 0.00675,
+  affordable_housing: 0.00675,
+  office: 0.00846,
+  hotel: 0.00987,
+  retail: 0.01181,
+  mixed_use: 0.0079,
+  default: 0.0075
+};
+
+const article321ReviewerRole: AttestationRole = "rcxa";
 
 export type BacnetGatewayRecord = {
   id: string;
@@ -1100,6 +1228,448 @@ function parseJsonObject(value?: string | null): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function parseJsonValue<T = unknown>(value?: string | null): T | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return null;
+  }
+}
+
+function getReportingFieldDefinition(fieldKey: string): ReportingInputFieldDefinition {
+  return (
+    reportingFieldDefinitionByKey.get(fieldKey) ?? {
+      key: fieldKey,
+      label: fieldKey.replaceAll("_", " "),
+      family: "workflow",
+      inputHint: "text"
+    }
+  );
+}
+
+function inferFieldFamily(fieldKey: string): ReportingInputFieldFamily {
+  return getReportingFieldDefinition(fieldKey).family;
+}
+
+function parseManualInputValue(valueText: string): unknown {
+  const trimmed = valueText.trim();
+
+  if (trimmed === "") {
+    return "";
+  }
+
+  if (trimmed === "true") {
+    return true;
+  }
+
+  if (trimmed === "false") {
+    return false;
+  }
+
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && /^-?\d+(\.\d+)?$/.test(trimmed) ? numeric : trimmed;
+}
+
+function serializeJson(value: unknown) {
+  return JSON.stringify(value);
+}
+
+function getReportingDueDate(reportingYear: number, extensionRequested: boolean) {
+  if (reportingYear === 2026 && extensionRequested) {
+    return defaultExtendedDueDate;
+  }
+
+  if (reportingYear === 2026) {
+    return defaultReportingDueDate;
+  }
+
+  return `${reportingYear}-06-30`;
+}
+
+function getExtensionDueDate(reportingYear: number) {
+  return reportingYear === 2026 ? defaultReportingDueDate : `${reportingYear}-06-30`;
+}
+
+function getCoreModuleTypeForArticle(article: Building["article"]): FilingModuleType {
+  return article === "321" ? "article_321_report" : "article_320_report";
+}
+
+function isTruthy(value: unknown) {
+  return value === true || value === "true" || value === 1;
+}
+
+function getCycleAcceptedInputMap(packageId: string) {
+  const db = getDatabase();
+  const rows = db
+    .prepare(
+      `SELECT field_key, value_json
+       FROM input_values
+       WHERE package_id = ? AND review_status = 'accepted'
+       ORDER BY reviewed_at DESC, created_at DESC`
+    )
+    .all(packageId) as Array<{ field_key: string; value_json: string }>;
+
+  return new Map(
+    rows.map((row) => [row.field_key, parseJsonValue(row.value_json)] as const)
+  );
+}
+
+function getCycleNeedsReviewFieldKeys(packageId: string) {
+  const db = getDatabase();
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT field_key
+       FROM input_values
+       WHERE package_id = ? AND review_status = 'pending_review'
+       ORDER BY field_key ASC`
+    )
+    .all(packageId) as Array<{ field_key: string }>;
+
+  return rows.map((row) => row.field_key);
+}
+
+function getCoreRequiredFieldKeys(article: Building["article"], pathwayMode?: Article321PathwayMode | null) {
+  const base = [
+    "bbl",
+    "bin",
+    "address",
+    "covered_status",
+    "article",
+    "pathway",
+    "espm_property_id",
+    "espm_property_name",
+    "gross_floor_area_total",
+    "gfa_by_property_type",
+    "energy_by_source",
+    "prior_year_compliance_status",
+    "methods_used_to_comply"
+  ];
+
+  if (article === "321") {
+    return [...base, "article_321_pathway_mode"].concat(pathwayMode === "performance" ? [] : []);
+  }
+
+  return base;
+}
+
+function getRequiredFieldKeysForActiveModules(
+  article: Building["article"],
+  acceptedInputs: Map<string, unknown>,
+  activeModuleTypes: FilingModuleType[]
+) {
+  const pathwayMode =
+    acceptedInputs.get("article_321_pathway_mode") === "prescriptive" ? "prescriptive" : "performance";
+  const required = new Set<string>(getCoreRequiredFieldKeys(article, pathwayMode));
+
+  for (const moduleType of activeModuleTypes) {
+    if (moduleType === "extension") {
+      required.add("extension_requested");
+    }
+
+    if (moduleType === "deductions") {
+      required.add("deduction_template_version");
+      required.add("tou_inputs");
+      required.add("tes_inputs");
+      required.add("beneficial_electrification_banking");
+    }
+
+    if (moduleType === "adjustment_320_7") {
+      required.add("constraint_type");
+      required.add("constraint_term");
+      required.add("offsets_purchased");
+      required.add("supporting_plan_status");
+    }
+
+    if (moduleType === "adjustment_320_8_320_9") {
+      required.add("approved_adjustment_type");
+      required.add("approval_reference");
+      required.add("carryforward_from_2025");
+    }
+
+    if (moduleType === "penalty_mitigation") {
+      required.add("mitigation_requested");
+      required.add("good_faith_efforts");
+      required.add("prior_compliant_report_reference");
+    }
+  }
+
+  return Array.from(required);
+}
+
+function valueAsNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+  }
+
+  return null;
+}
+
+function toRecord(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function computeActualEmissions(energyBySource: Record<string, unknown>) {
+  return Object.entries(energyBySource).reduce((total, [key, value]) => {
+    const usage = valueAsNumber(value) ?? 0;
+    const factor = energyEmissionFactors[key as keyof typeof energyEmissionFactors] ?? 0;
+    return total + usage * factor;
+  }, 0);
+}
+
+function computeLimitFromGfa(gfaByPropertyType: Record<string, unknown>) {
+  return Object.entries(gfaByPropertyType).reduce((total, [propertyType, value]) => {
+    const gfa = valueAsNumber(value) ?? 0;
+    const factor = propertyTypeLimitFactors[propertyType] ?? propertyTypeLimitFactors.default;
+    return total + gfa * factor;
+  }, 0);
+}
+
+function updateReportingCycleStatus(reportingCycleId: string, filingStatus: ReportingCycleStatus, filingDueDate?: string) {
+  const db = getDatabase();
+  db.prepare(
+    `UPDATE reporting_cycles
+     SET filing_status = ?, filing_due_date = COALESCE(?, filing_due_date), updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(filingStatus, filingDueDate ?? null, reportingCycleId);
+}
+
+function listFilingModulesByCycleId(reportingCycleId: string): FilingModule[] {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT id, reporting_cycle_id, module_type, status, due_date, prerequisite_state, blocking_reason
+       FROM filing_modules
+       WHERE reporting_cycle_id = ?
+       ORDER BY due_date ASC, module_type ASC`
+    )
+    .all(reportingCycleId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        reporting_cycle_id: string;
+        module_type: FilingModuleType;
+        status: FilingModuleStatus;
+        due_date: string;
+        prerequisite_state: string;
+        blocking_reason: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        reportingCycleId: typedRow.reporting_cycle_id,
+        moduleType: typedRow.module_type,
+        status: typedRow.status,
+        dueDate: typedRow.due_date,
+        prerequisiteState: typedRow.prerequisite_state,
+        blockingReason: typedRow.blocking_reason ?? undefined
+      };
+    });
+}
+
+function listInputValuesByPackageId(packageId: string): ReportingInputValue[] {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT id, package_id, field_key, value_json, source_type, source_ref, confidence_score, review_status, reviewed_by, reviewed_at
+       FROM input_values
+       WHERE package_id = ?
+       ORDER BY field_key ASC, created_at DESC`
+    )
+    .all(packageId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        package_id: string;
+        field_key: string;
+        value_json: string;
+        source_type: ReportingInputSourceType;
+        source_ref: string | null;
+        confidence_score: number | null;
+        review_status: ReportingInputReviewStatus;
+        reviewed_by: AuditActorType | null;
+        reviewed_at: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        packageId: typedRow.package_id,
+        fieldKey: typedRow.field_key,
+        fieldFamily: inferFieldFamily(typedRow.field_key),
+        valueJson: typedRow.value_json,
+        sourceType: typedRow.source_type,
+        sourceRef: typedRow.source_ref ?? undefined,
+        confidenceScore: typedRow.confidence_score ?? undefined,
+        reviewStatus: typedRow.review_status,
+        reviewedBy: typedRow.reviewed_by ?? undefined,
+        reviewedAt: typedRow.reviewed_at ?? undefined
+      };
+    });
+}
+
+function listDocumentExtractionsByDocumentIds(documentIds: string[]): DocumentExtraction[] {
+  if (documentIds.length === 0) {
+    return [];
+  }
+
+  const db = getDatabase();
+  const placeholders = documentIds.map(() => "?").join(", ");
+  return db
+    .prepare(
+      `SELECT id, document_id, field_key, value_json, confidence_score, page_ref, extraction_method
+       FROM document_extractions
+       WHERE document_id IN (${placeholders})
+       ORDER BY id DESC`
+    )
+    .all(...documentIds)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        document_id: string;
+        field_key: string;
+        value_json: string;
+        confidence_score: number;
+        page_ref: string | null;
+        extraction_method: string;
+      };
+
+      return {
+        id: typedRow.id,
+        documentId: typedRow.document_id,
+        fieldKey: typedRow.field_key,
+        valueJson: typedRow.value_json,
+        confidenceScore: typedRow.confidence_score,
+        pageRef: typedRow.page_ref ?? undefined,
+        extractionMethod: typedRow.extraction_method
+      };
+    });
+}
+
+function listAttestationsByCycleId(reportingCycleId: string): FilingAttestation[] {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT id, reporting_cycle_id, role, signer_name, owner_of_record_match_status, completion_status, completed_at
+       FROM attestations
+       WHERE reporting_cycle_id = ?
+       ORDER BY role ASC`
+    )
+    .all(reportingCycleId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        reporting_cycle_id: string;
+        role: AttestationRole;
+        signer_name: string | null;
+        owner_of_record_match_status: OwnerRecordMatchStatus;
+        completion_status: "pending" | "completed" | "blocked";
+        completed_at: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        reportingCycleId: typedRow.reporting_cycle_id,
+        role: typedRow.role,
+        signerName: typedRow.signer_name ?? undefined,
+        ownerOfRecordMatchStatus: typedRow.owner_of_record_match_status,
+        completionStatus: typedRow.completion_status,
+        completedAt: typedRow.completed_at ?? undefined
+      };
+    });
+}
+
+function listArticle321PecmStatusesByCycleId(reportingCycleId: string): Article321PecmStatus[] {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT id, reporting_cycle_id, pecm_key, pecm_label, applicability, compliance_status, evidence_state, reviewer_role, notes
+       FROM article_321_pecm_statuses
+       WHERE reporting_cycle_id = ?
+       ORDER BY pecm_key ASC`
+    )
+    .all(reportingCycleId)
+    .map((row) => {
+      const typedRow = row as {
+        id: string;
+        reporting_cycle_id: string;
+        pecm_key: string;
+        pecm_label: string;
+        applicability: PecmApplicability;
+        compliance_status: PecmComplianceStatus;
+        evidence_state: "missing" | "pending_review" | "accepted" | "rejected";
+        reviewer_role: AttestationRole;
+        notes: string | null;
+      };
+
+      return {
+        id: typedRow.id,
+        reportingCycleId: typedRow.reporting_cycle_id,
+        pecmKey: typedRow.pecm_key,
+        pecmLabel: typedRow.pecm_label,
+        applicability: typedRow.applicability,
+        complianceStatus: typedRow.compliance_status,
+        evidenceState: typedRow.evidence_state,
+        reviewerRole: typedRow.reviewer_role,
+        notes: typedRow.notes ?? undefined
+      };
+    });
+}
+
+function getLatestCalculationRunByCycleId(reportingCycleId: string): CalculationRun | null {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT id, reporting_cycle_id, calculation_version, missing_required_inputs_json, needs_review_json, warnings_json, calculation_outputs_json, created_at
+       FROM calculation_runs
+       WHERE reporting_cycle_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`
+    )
+    .get(reportingCycleId) as
+    | {
+        id: string;
+        reporting_cycle_id: string;
+        calculation_version: string;
+        missing_required_inputs_json: string;
+        needs_review_json: string;
+        warnings_json: string;
+        calculation_outputs_json: string;
+        created_at: string;
+      }
+    | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    reportingCycleId: row.reporting_cycle_id,
+    calculationVersion: row.calculation_version,
+    missingRequiredInputs: parseJsonValue<string[]>(row.missing_required_inputs_json) ?? [],
+    needsReview: parseJsonValue<string[]>(row.needs_review_json) ?? [],
+    warnings: parseJsonValue<string[]>(row.warnings_json) ?? [],
+    calculationOutputs: parseJsonObject(row.calculation_outputs_json),
+    createdAt: row.created_at
+  };
 }
 
 function normalizeCompliancePathway(pathway?: string | null): CompliancePathway {
@@ -2377,7 +2947,9 @@ export function getBuildingById(id: string): Building {
   const db = getDatabase();
   const row = db
     .prepare(
-      `SELECT id, portfolio_id, name, address_line_1, city, state, zip, bbl, bin, dof_gsf, reported_gfa, pathway, article
+      `SELECT id, portfolio_id, name, address_line_1, city, state, zip, bbl, bin, dof_gsf, reported_gfa, pathway, article,
+              bas_present, bas_vendor, bas_protocol, bas_access_state, point_list_available, schedules_available,
+              ventilation_system_archetype, equipment_inventory_status
        FROM buildings
        WHERE id = ?`
     )
@@ -2396,6 +2968,14 @@ export function getBuildingById(id: string): Building {
         reported_gfa: number | null;
         pathway: CompliancePathway | null;
         article: "320" | "321" | null;
+        bas_present: BuildingAvailability | null;
+        bas_vendor: string | null;
+        bas_protocol: BuildingBasProtocol | null;
+        bas_access_state: BuildingBasAccessState | null;
+        point_list_available: BuildingAvailability | null;
+        schedules_available: BuildingAvailability | null;
+        ventilation_system_archetype: VentilationSystemArchetype | null;
+        equipment_inventory_status: EquipmentInventoryStatus | null;
       }
     | undefined;
 
@@ -2433,6 +3013,14 @@ export function getBuildingById(id: string): Building {
     grossFloorArea: row.reported_gfa ?? undefined,
     pathway: row.pathway ?? "UNKNOWN",
     article: row.article ?? "UNKNOWN",
+    basPresent: row.bas_present ?? "unknown",
+    basVendor: row.bas_vendor ?? undefined,
+    basProtocol: row.bas_protocol ?? "unknown",
+    basAccessState: row.bas_access_state ?? "unknown",
+    pointListAvailable: row.point_list_available ?? "unknown",
+    schedulesAvailable: row.schedules_available ?? "unknown",
+    ventilationSystemArchetype: row.ventilation_system_archetype ?? "unknown",
+    equipmentInventoryStatus: row.equipment_inventory_status ?? "unknown",
     status: "active",
     source: {
       sourceType: "public",
@@ -2450,6 +3038,684 @@ export function listBuildingsForPortfolio(portfolioId: string): Building[] {
     .all(portfolioId) as Array<{ id: string }>;
 
   return rows.map((row) => getBuildingById(row.id));
+}
+
+export function updateBuildingBasProfile(input: UpdateBuildingBasProfileInput): Building {
+  const db = getDatabase();
+  const current = getBuildingById(input.buildingId);
+  const next = {
+    basPresent: input.basPresent ?? current.basPresent,
+    basVendor: input.basVendor ?? current.basVendor ?? null,
+    basProtocol: input.basProtocol ?? current.basProtocol,
+    basAccessState: input.basAccessState ?? current.basAccessState,
+    pointListAvailable: input.pointListAvailable ?? current.pointListAvailable,
+    schedulesAvailable: input.schedulesAvailable ?? current.schedulesAvailable,
+    ventilationSystemArchetype: input.ventilationSystemArchetype ?? current.ventilationSystemArchetype,
+    equipmentInventoryStatus: input.equipmentInventoryStatus ?? current.equipmentInventoryStatus
+  };
+
+  db.prepare(
+    `UPDATE buildings
+     SET
+       bas_present = ?,
+       bas_vendor = ?,
+       bas_protocol = ?,
+       bas_access_state = ?,
+       point_list_available = ?,
+       schedules_available = ?,
+       ventilation_system_archetype = ?,
+       equipment_inventory_status = ?
+     WHERE id = ?`
+  ).run(
+    next.basPresent,
+    next.basVendor,
+    next.basProtocol,
+    next.basAccessState,
+    next.pointListAvailable,
+    next.schedulesAvailable,
+    next.ventilationSystemArchetype,
+    next.equipmentInventoryStatus,
+    input.buildingId
+  );
+
+  recordAuditEvent({
+    buildingId: input.buildingId,
+    entityType: "building",
+    entityId: input.buildingId,
+    action: "building_bas_profile_updated",
+    actorType: input.actorType ?? "owner",
+    summary: `BAS readiness profile updated for ${current.name}.`,
+    metadataJson: JSON.stringify(next)
+  });
+
+  return getBuildingById(input.buildingId);
+}
+
+function getCoverageSnapshot(buildingId: string) {
+  const db = getDatabase();
+  return db
+    .prepare(
+      `SELECT covered_status, source_version
+       FROM coverage_records
+       WHERE building_id = ?
+       ORDER BY filing_year DESC
+       LIMIT 1`
+    )
+    .get(buildingId) as
+    | {
+        covered_status: string | null;
+        source_version: string | null;
+      }
+    | undefined;
+}
+
+function ensureReportingCycleRecord(buildingId: string, reportingYear: number) {
+  const db = getDatabase();
+  const building = getBuildingById(buildingId);
+  const coverage = getCoverageSnapshot(buildingId);
+  const existing = db
+    .prepare(
+      `SELECT id, extension_requested, filing_due_date, extended_due_date, filing_status, cbl_dispute_status, owner_of_record_status
+       FROM reporting_cycles
+       WHERE building_id = ? AND reporting_year = ?`
+    )
+    .get(buildingId, reportingYear) as
+    | {
+        id: string;
+        extension_requested: number;
+        filing_due_date: string;
+        extended_due_date: string | null;
+        filing_status: ReportingCycleStatus;
+        cbl_dispute_status: string | null;
+        owner_of_record_status: OwnerRecordMatchStatus;
+      }
+    | undefined;
+  const extensionRequested = Boolean(existing?.extension_requested ?? 0);
+  const filingDueDate = getReportingDueDate(reportingYear, extensionRequested);
+
+  if (!existing) {
+    const cycleId = makeId("cycle");
+    db.prepare(
+      `INSERT INTO reporting_cycles (
+        id, building_id, reporting_year, filing_status, extension_requested, filing_due_date, extended_due_date, pathway_snapshot, article_snapshot, cbl_version, cbl_dispute_status, owner_of_record_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      cycleId,
+      buildingId,
+      reportingYear,
+      "draft",
+      0,
+      filingDueDate,
+      reportingYear === 2026 ? defaultExtendedDueDate : `${reportingYear}-08-29`,
+      building.pathway === "UNKNOWN" ? null : building.pathway,
+      building.article === "UNKNOWN" ? null : building.article,
+      coverage?.source_version ?? `${reportingYear}`,
+      "not_disputed",
+      "unknown"
+    );
+
+    recordAuditEvent({
+      buildingId,
+      entityType: "reporting_cycle",
+      entityId: cycleId,
+      action: "reporting_cycle_created",
+      actorType: "system",
+      summary: `Reporting cycle ${reportingYear} was initialized for filing intake.`,
+      metadataJson: JSON.stringify({ reportingYear, article: building.article, pathway: building.pathway })
+    });
+
+    return cycleId;
+  }
+
+  db.prepare(
+    `UPDATE reporting_cycles
+     SET filing_due_date = ?, pathway_snapshot = ?, article_snapshot = ?, cbl_version = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(
+    filingDueDate,
+    building.pathway === "UNKNOWN" ? null : building.pathway,
+    building.article === "UNKNOWN" ? null : building.article,
+    coverage?.source_version ?? `${reportingYear}`,
+    existing.id
+  );
+
+  return existing.id;
+}
+
+function ensureReportingInputPackage(reportingCycleId: string) {
+  const db = getDatabase();
+  const existing = db
+    .prepare(`SELECT id, package_status FROM reporting_input_packages WHERE reporting_cycle_id = ?`)
+    .get(reportingCycleId) as { id: string; package_status: ReportingPackageStatus } | undefined;
+
+  if (existing) {
+    return existing.id;
+  }
+
+  const packageId = makeId("pkg");
+  db.prepare(
+    `INSERT INTO reporting_input_packages (id, reporting_cycle_id, package_status)
+     VALUES (?, ?, ?)`
+  ).run(packageId, reportingCycleId, "draft");
+  return packageId;
+}
+
+function ensureReportingCycleDefaults(buildingId: string, reportingYear: number) {
+  const db = getDatabase();
+  const building = getBuildingById(buildingId);
+  const reportingCycleId = ensureReportingCycleRecord(buildingId, reportingYear);
+  const packageId = ensureReportingInputPackage(reportingCycleId);
+  const cycle = db
+    .prepare(
+      `SELECT extension_requested
+       FROM reporting_cycles
+       WHERE id = ?`
+    )
+    .get(reportingCycleId) as { extension_requested: number } | undefined;
+  const extensionRequested = Boolean(cycle?.extension_requested ?? 0);
+  const moduleDueDate = getReportingDueDate(reportingYear, extensionRequested);
+  const modules: Array<{ type: FilingModuleType; status: FilingModuleStatus; dueDate: string; prerequisiteState: string }> = [
+    {
+      type: getCoreModuleTypeForArticle(building.article),
+      status: "active",
+      dueDate: moduleDueDate,
+      prerequisiteState: "ready"
+    },
+    { type: "extension", status: "inactive", dueDate: getExtensionDueDate(reportingYear), prerequisiteState: "ready" },
+    { type: "deductions", status: "inactive", dueDate: moduleDueDate, prerequisiteState: "requires_core_report" },
+    { type: "adjustment_320_7", status: "inactive", dueDate: moduleDueDate, prerequisiteState: "requires_core_report" },
+    { type: "adjustment_320_8_320_9", status: "inactive", dueDate: moduleDueDate, prerequisiteState: "requires_core_report" },
+    { type: "penalty_mitigation", status: "inactive", dueDate: moduleDueDate, prerequisiteState: "requires_core_report" }
+  ];
+
+  for (const module of modules) {
+    const existing = db
+      .prepare(`SELECT id FROM filing_modules WHERE reporting_cycle_id = ? AND module_type = ?`)
+      .get(reportingCycleId, module.type) as { id: string } | undefined;
+
+    if (existing) {
+      db.prepare(
+        `UPDATE filing_modules
+         SET due_date = ?, prerequisite_state = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      ).run(module.dueDate, module.prerequisiteState, existing.id);
+    } else {
+      db.prepare(
+        `INSERT INTO filing_modules (id, reporting_cycle_id, module_type, status, due_date, prerequisite_state)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      ).run(makeId("mod"), reportingCycleId, module.type, module.status, module.dueDate, module.prerequisiteState);
+    }
+  }
+
+  const attestationRoles: AttestationRole[] = ["owner", "rdp", "rcxa"];
+  for (const role of attestationRoles) {
+    const existing = db
+      .prepare(`SELECT id FROM attestations WHERE reporting_cycle_id = ? AND role = ?`)
+      .get(reportingCycleId, role) as { id: string } | undefined;
+
+    if (!existing) {
+      db.prepare(
+        `INSERT INTO attestations (id, reporting_cycle_id, role, owner_of_record_match_status, completion_status)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(makeId("att"), reportingCycleId, role, "unknown", "pending");
+    }
+  }
+
+  if (building.article === "321") {
+    for (const [index, label] of pecmCatalog.entries()) {
+      const pecmKey = `pecm_${String(index + 1).padStart(2, "0")}`;
+      const existing = db
+        .prepare(`SELECT id FROM article_321_pecm_statuses WHERE reporting_cycle_id = ? AND pecm_key = ?`)
+        .get(reportingCycleId, pecmKey) as { id: string } | undefined;
+
+      if (!existing) {
+        db.prepare(
+          `INSERT INTO article_321_pecm_statuses (
+            id, reporting_cycle_id, pecm_key, pecm_label, applicability, compliance_status, evidence_state, reviewer_role
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(makeId("pecm"), reportingCycleId, pecmKey, label, "unknown", "unknown", "missing", article321ReviewerRole);
+      }
+    }
+  }
+
+  const coverage = getCoverageSnapshot(buildingId);
+  const baselineValues: Array<{ fieldKey: string; value: unknown; sourceType: ReportingInputSourceType; sourceRef: string }> = [
+    { fieldKey: "bbl", value: building.bbl ?? "", sourceType: "public_record", sourceRef: "building_record" },
+    { fieldKey: "bin", value: building.bin ?? "", sourceType: "public_record", sourceRef: "building_record" },
+    {
+      fieldKey: "address",
+      value: `${building.addressLine1}, ${building.city}, ${building.state} ${building.zip}`,
+      sourceType: "public_record",
+      sourceRef: "building_record"
+    },
+    { fieldKey: "reporting_year", value: reportingYear, sourceType: "carryforward", sourceRef: "reporting_cycle" },
+    { fieldKey: "article", value: building.article, sourceType: "public_record", sourceRef: "coverage_snapshot" },
+    { fieldKey: "pathway", value: building.pathway, sourceType: "public_record", sourceRef: "coverage_snapshot" },
+    {
+      fieldKey: "covered_status",
+      value: coverage?.covered_status ?? (building.pathway === "UNKNOWN" ? "unknown" : "covered"),
+      sourceType: "public_record",
+      sourceRef: "coverage_snapshot"
+    },
+    {
+      fieldKey: "cbl_version",
+      value: coverage?.source_version ?? `${reportingYear}`,
+      sourceType: "public_record",
+      sourceRef: "coverage_snapshot"
+    }
+  ];
+
+  for (const entry of baselineValues) {
+    const exists = db
+      .prepare(
+        `SELECT id
+         FROM input_values
+         WHERE package_id = ? AND field_key = ? AND review_status = 'accepted'
+         LIMIT 1`
+      )
+      .get(packageId, entry.fieldKey) as { id: string } | undefined;
+
+    if (!exists && entry.value !== "") {
+      db.prepare(
+        `INSERT INTO input_values (
+          id, package_id, field_key, value_json, source_type, source_ref, confidence_score, review_status, reviewed_by, reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        makeId("inp"),
+        packageId,
+        entry.fieldKey,
+        serializeJson(entry.value),
+        entry.sourceType,
+        entry.sourceRef,
+        0.95,
+        "accepted",
+        "system",
+        new Date().toISOString()
+      );
+    }
+  }
+
+  return { reportingCycleId, packageId };
+}
+
+function getReportingCycleById(reportingCycleId: string): ReportingCycle {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT id, building_id, reporting_year, filing_status, extension_requested, filing_due_date, extended_due_date, pathway_snapshot, article_snapshot, cbl_version, cbl_dispute_status, owner_of_record_status
+       FROM reporting_cycles
+       WHERE id = ?`
+    )
+    .get(reportingCycleId) as
+    | {
+        id: string;
+        building_id: string;
+        reporting_year: number;
+        filing_status: ReportingCycleStatus;
+        extension_requested: number;
+        filing_due_date: string;
+        extended_due_date: string | null;
+        pathway_snapshot: CompliancePathway | null;
+        article_snapshot: "320" | "321" | null;
+        cbl_version: string | null;
+        cbl_dispute_status: string | null;
+        owner_of_record_status: OwnerRecordMatchStatus;
+      }
+    | undefined;
+
+  if (!row) {
+    throw new Error(`Reporting cycle not found: ${reportingCycleId}`);
+  }
+
+  return {
+    id: row.id,
+    buildingId: row.building_id,
+    reportingYear: row.reporting_year,
+    filingStatus: row.filing_status,
+    extensionRequested: Boolean(row.extension_requested),
+    filingDueDate: row.filing_due_date,
+    extendedDueDate: row.extended_due_date ?? undefined,
+    pathwaySnapshot: row.pathway_snapshot ?? "UNKNOWN",
+    articleSnapshot: row.article_snapshot ?? "UNKNOWN",
+    cblVersion: row.cbl_version ?? undefined,
+    cblDisputeStatus: row.cbl_dispute_status ?? undefined,
+    ownerOfRecordStatus: row.owner_of_record_status
+  };
+}
+
+function getReportingInputPackageByCycleId(reportingCycleId: string): ReportingInputPackage {
+  const db = getDatabase();
+  const row = db
+    .prepare(
+      `SELECT id, reporting_cycle_id, package_status
+       FROM reporting_input_packages
+       WHERE reporting_cycle_id = ?`
+    )
+    .get(reportingCycleId) as
+    | {
+        id: string;
+        reporting_cycle_id: string;
+        package_status: ReportingPackageStatus;
+      }
+    | undefined;
+
+  if (!row) {
+    throw new Error(`Reporting input package not found for cycle ${reportingCycleId}`);
+  }
+
+  return {
+    id: row.id,
+    reportingCycleId: row.reporting_cycle_id,
+    status: row.package_status
+  };
+}
+
+export function listReportingInputFieldDefinitions() {
+  return reportingFieldDefinitions.map((definition) => ({ ...definition }));
+}
+
+export function createOrRefreshReportingCycle(buildingId: string, reportingYear: number) {
+  ensureReportingCycleDefaults(buildingId, reportingYear);
+  return getReportingWorkspaceByBuildingId(buildingId, reportingYear);
+}
+
+export function getReportingWorkspaceByBuildingId(buildingId: string, reportingYear: number): ReportingWorkspace {
+  const { reportingCycleId } = ensureReportingCycleDefaults(buildingId, reportingYear);
+  return getReportingWorkspaceById(reportingCycleId);
+}
+
+export function getReportingWorkspaceById(reportingCycleId: string): ReportingWorkspace {
+  const cycle = getReportingCycleById(reportingCycleId);
+  const inputPackage = getReportingInputPackageByCycleId(reportingCycleId);
+  const modules = listFilingModulesByCycleId(reportingCycleId);
+  const documents = listDocumentsByBuildingId(cycle.buildingId).filter(
+    (document) => document.reportingYear === undefined || document.reportingYear === cycle.reportingYear
+  );
+  const extractions = listDocumentExtractionsByDocumentIds(documents.map((document) => document.id));
+  const inputValues = listInputValuesByPackageId(inputPackage.id);
+  const attestations = listAttestationsByCycleId(reportingCycleId);
+  const pecmStatuses = listArticle321PecmStatusesByCycleId(reportingCycleId);
+  const latestCalculationRun = getLatestCalculationRunByCycleId(reportingCycleId) ?? undefined;
+  const acceptedInputs = getCycleAcceptedInputMap(inputPackage.id);
+  const activeModuleTypes = modules
+    .filter((module) => module.status === "active" || module.status === "blocked" || module.status === "complete")
+    .map((module) => module.moduleType);
+  const requiredFieldKeys = getRequiredFieldKeysForActiveModules(cycle.articleSnapshot, acceptedInputs, activeModuleTypes);
+  const blockers = [
+    ...modules.filter((module) => module.status === "blocked").map((module) => module.blockingReason ?? `${module.moduleType} is blocked.`),
+    ...(latestCalculationRun?.missingRequiredInputs.map((fieldKey) => `${fieldKey} is still required.`) ?? []),
+    ...(latestCalculationRun?.needsReview.map((fieldKey) => `${fieldKey} still needs review.`) ?? []),
+    ...attestations
+      .filter((attestation) => attestation.completionStatus === "blocked")
+      .map((attestation) => `${attestation.role.toUpperCase()} attestation is blocked by owner-of-record mismatch.`)
+  ];
+
+  return {
+    cycle,
+    inputPackage,
+    modules,
+    documents,
+    inputValues,
+    extractions,
+    attestations,
+    pecmStatuses,
+    latestCalculationRun,
+    requiredFieldKeys,
+    blockers
+  };
+}
+
+export function upsertReportingInputValue(input: {
+  reportingCycleId: string;
+  fieldKey: string;
+  value: unknown;
+  actorType?: AuditActorType;
+}) {
+  const db = getDatabase();
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  const inputPackage = getReportingInputPackageByCycleId(input.reportingCycleId);
+  const reviewedAt = new Date().toISOString();
+
+  db.prepare(
+    `UPDATE input_values
+     SET review_status = CASE WHEN review_status = 'accepted' THEN 'rejected' ELSE review_status END,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE package_id = ? AND field_key = ? AND review_status = 'accepted'`
+  ).run(inputPackage.id, input.fieldKey);
+
+  const inputValue = {
+    id: makeId("inp"),
+    packageId: inputPackage.id,
+    fieldKey: input.fieldKey,
+    valueJson: serializeJson(input.value),
+    sourceType: "manual" as ReportingInputSourceType,
+    sourceRef: "manual_entry",
+    confidenceScore: 1,
+    reviewStatus: "accepted" as ReportingInputReviewStatus,
+    reviewedBy: input.actorType ?? "owner",
+    reviewedAt
+  };
+
+  db.prepare(
+    `INSERT INTO input_values (
+      id, package_id, field_key, value_json, source_type, source_ref, confidence_score, review_status, reviewed_by, reviewed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    inputValue.id,
+    inputValue.packageId,
+    inputValue.fieldKey,
+    inputValue.valueJson,
+    inputValue.sourceType,
+    inputValue.sourceRef,
+    inputValue.confidenceScore,
+    inputValue.reviewStatus,
+    inputValue.reviewedBy,
+    inputValue.reviewedAt
+  );
+
+  if (input.fieldKey === "extension_requested") {
+    const extensionRequested = isTruthy(input.value);
+    const dueDate = getReportingDueDate(cycle.reportingYear, extensionRequested);
+    db.prepare(
+      `UPDATE reporting_cycles
+       SET extension_requested = ?, filing_due_date = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).run(extensionRequested ? 1 : 0, dueDate, cycle.id);
+    db.prepare(
+      `UPDATE filing_modules
+       SET status = CASE WHEN module_type = 'extension' THEN 'active' ELSE status END,
+           due_date = CASE WHEN module_type = 'extension' THEN ? ELSE ? END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE reporting_cycle_id = ? AND module_type IN ('extension', ?, ?)`
+    ).run(
+      getExtensionDueDate(cycle.reportingYear),
+      dueDate,
+      cycle.id,
+      getCoreModuleTypeForArticle(cycle.articleSnapshot),
+      "deductions"
+    );
+  }
+
+  recordAuditEvent({
+    buildingId: cycle.buildingId,
+    entityType: "reporting_input_value",
+    entityId: inputValue.id,
+    action: "reporting_input_saved",
+    actorType: input.actorType ?? "owner",
+    summary: `${input.fieldKey.replaceAll("_", " ")} was saved to the reporting input package.`,
+    metadataJson: JSON.stringify({ fieldKey: input.fieldKey, value: input.value })
+  });
+
+  return getReportingWorkspaceById(cycle.id);
+}
+
+export function reviewReportingInputValue(input: {
+  reportingCycleId: string;
+  inputValueId: string;
+  reviewStatus: ReportingInputReviewStatus;
+  actorType?: AuditActorType;
+}) {
+  const db = getDatabase();
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  const inputPackage = getReportingInputPackageByCycleId(input.reportingCycleId);
+  const existing = db
+    .prepare(
+      `SELECT id, field_key, value_json
+       FROM input_values
+       WHERE id = ? AND package_id = ?`
+    )
+    .get(input.inputValueId, inputPackage.id) as
+    | {
+        id: string;
+        field_key: string;
+        value_json: string;
+      }
+    | undefined;
+
+  if (!existing) {
+    throw new Error(`Reporting input value not found: ${input.inputValueId}`);
+  }
+
+  if (input.reviewStatus === "accepted") {
+    db.prepare(
+      `UPDATE input_values
+       SET review_status = CASE WHEN review_status = 'accepted' THEN 'rejected' ELSE review_status END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE package_id = ? AND field_key = ? AND id != ?`
+    ).run(inputPackage.id, existing.field_key, existing.id);
+  }
+
+  db.prepare(
+    `UPDATE input_values
+     SET review_status = ?, reviewed_by = ?, reviewed_at = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(input.reviewStatus, input.actorType ?? "owner", new Date().toISOString(), existing.id);
+
+  recordAuditEvent({
+    buildingId: cycle.buildingId,
+    entityType: "reporting_input_value",
+    entityId: existing.id,
+    action: "reporting_input_reviewed",
+    actorType: input.actorType ?? "owner",
+    summary: `${existing.field_key.replaceAll("_", " ")} was ${input.reviewStatus.replaceAll("_", " ")}.`,
+    metadataJson: JSON.stringify({ fieldKey: existing.field_key, reviewStatus: input.reviewStatus })
+  });
+
+  return getReportingWorkspaceById(cycle.id);
+}
+
+export function activateReportingModule(input: {
+  reportingCycleId: string;
+  moduleType: FilingModuleType;
+  actorType?: AuditActorType;
+}) {
+  const db = getDatabase();
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  const dueDate = input.moduleType === "extension" ? getExtensionDueDate(cycle.reportingYear) : cycle.filingDueDate;
+  db.prepare(
+    `UPDATE filing_modules
+     SET status = 'active', due_date = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE reporting_cycle_id = ? AND module_type = ?`
+  ).run(dueDate, cycle.id, input.moduleType);
+
+  recordAuditEvent({
+    buildingId: cycle.buildingId,
+    entityType: "filing_module",
+    entityId: `${cycle.id}:${input.moduleType}`,
+    action: "filing_module_activated",
+    actorType: input.actorType ?? "owner",
+    summary: `${input.moduleType.replaceAll("_", " ")} module was activated for the reporting cycle.`,
+    metadataJson: JSON.stringify({ moduleType: input.moduleType })
+  });
+
+  return getReportingWorkspaceById(cycle.id);
+}
+
+export function upsertReportingAttestation(input: {
+  reportingCycleId: string;
+  role: AttestationRole;
+  signerName?: string;
+  ownerOfRecordMatchStatus: OwnerRecordMatchStatus;
+  completionStatus: "pending" | "completed";
+  actorType?: AuditActorType;
+}) {
+  const db = getDatabase();
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  const existing = db
+    .prepare(`SELECT id FROM attestations WHERE reporting_cycle_id = ? AND role = ?`)
+    .get(cycle.id, input.role) as { id: string } | undefined;
+  const nextStatus =
+    input.completionStatus === "completed" && input.ownerOfRecordMatchStatus !== "matched" ? "blocked" : input.completionStatus;
+  const completedAt = nextStatus === "completed" ? new Date().toISOString() : null;
+
+  if (existing) {
+    db.prepare(
+      `UPDATE attestations
+       SET signer_name = ?, owner_of_record_match_status = ?, completion_status = ?, completed_at = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).run(input.signerName ?? null, input.ownerOfRecordMatchStatus, nextStatus, completedAt, existing.id);
+  }
+
+  db.prepare(
+    `UPDATE reporting_cycles
+     SET owner_of_record_status = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(input.ownerOfRecordMatchStatus, cycle.id);
+
+  recordAuditEvent({
+    buildingId: cycle.buildingId,
+    entityType: "attestation",
+    entityId: existing?.id ?? `${cycle.id}:${input.role}`,
+    action: "attestation_updated",
+    actorType: input.actorType ?? "owner",
+    summary: `${input.role.toUpperCase()} attestation moved to ${nextStatus}.`,
+    metadataJson: JSON.stringify({
+      role: input.role,
+      ownerOfRecordMatchStatus: input.ownerOfRecordMatchStatus,
+      completionStatus: nextStatus
+    })
+  });
+
+  return getReportingWorkspaceById(cycle.id);
+}
+
+export function upsertArticle321PecmStatus(input: {
+  reportingCycleId: string;
+  pecmKey: string;
+  applicability: PecmApplicability;
+  complianceStatus: PecmComplianceStatus;
+  evidenceState: "missing" | "pending_review" | "accepted" | "rejected";
+  reviewerRole?: AttestationRole;
+  notes?: string;
+  actorType?: AuditActorType;
+}) {
+  const db = getDatabase();
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  db.prepare(
+    `UPDATE article_321_pecm_statuses
+     SET applicability = ?, compliance_status = ?, evidence_state = ?, reviewer_role = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE reporting_cycle_id = ? AND pecm_key = ?`
+  ).run(
+    input.applicability,
+    input.complianceStatus,
+    input.evidenceState,
+    input.reviewerRole ?? article321ReviewerRole,
+    input.notes ?? null,
+    cycle.id,
+    input.pecmKey
+  );
+
+  recordAuditEvent({
+    buildingId: cycle.buildingId,
+    entityType: "article_321_pecm",
+    entityId: `${cycle.id}:${input.pecmKey}`,
+    action: "article_321_pecm_updated",
+    actorType: input.actorType ?? "owner",
+    summary: `${input.pecmKey.replaceAll("_", " ")} was updated for the Article 321 workspace.`,
+    metadataJson: JSON.stringify(input)
+  });
+
+  return getReportingWorkspaceById(cycle.id);
 }
 
 export function importBuildings(portfolioId: string, rows: BuildingImportRow[]): BuildingImportResult {
@@ -4259,7 +5525,7 @@ export function listDocumentsByBuildingId(buildingId: string): DocumentRecord[] 
 
   return db
     .prepare(
-      `SELECT id, building_id, document_type, file_url, classification_confidence, status
+      `SELECT id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
        FROM documents
        WHERE building_id = ?
        ORDER BY id DESC`
@@ -4273,15 +5539,25 @@ export function listDocumentsByBuildingId(buildingId: string): DocumentRecord[] 
         file_url: string;
         classification_confidence: number | null;
         status: string;
+        document_category: ReportingDocumentCategory | null;
+        reporting_year: number | null;
+        parsed_status: ReportingDocumentParsedStatus | null;
+        parser_type: string | null;
+        parser_version: string | null;
       };
 
       return {
         id: typedRow.id,
         buildingId: typedRow.building_id,
+        reportingYear: typedRow.reporting_year ?? undefined,
         documentType: typedRow.document_type,
+        documentCategory: typedRow.document_category ?? "owner_attestation",
         fileUrl: typedRow.file_url,
         classificationConfidence: typedRow.classification_confidence ?? undefined,
-        status: typedRow.status
+        status: typedRow.status,
+        parsedStatus: typedRow.parsed_status ?? "not_started",
+        parserType: typedRow.parser_type ?? undefined,
+        parserVersion: typedRow.parser_version ?? undefined
       };
     });
 }
@@ -4379,27 +5655,47 @@ export function getDocumentWorkspaceByBuildingId(buildingId: string): DocumentWo
   };
 }
 
-export function createDocument(input: { buildingId: string; documentType: string; fileUrl?: string }) {
+export function createDocument(input: {
+  buildingId: string;
+  documentType: string;
+  fileUrl?: string;
+  documentCategory?: ReportingDocumentCategory;
+  reportingYear?: number;
+  parsedStatus?: ReportingDocumentParsedStatus;
+  parserType?: string;
+  parserVersion?: string;
+}) {
   const db = getDatabase();
   const document = {
     id: makeId("doc"),
     buildingId: input.buildingId,
+    reportingYear: input.reportingYear,
     documentType: input.documentType,
+    documentCategory: input.documentCategory ?? "owner_attestation",
     fileUrl: input.fileUrl ?? `file://airwise/${input.buildingId}/${input.documentType.replaceAll(" ", "-")}`,
     classificationConfidence: 0.75,
-    status: "uploaded"
+    status: "uploaded",
+    parsedStatus: input.parsedStatus ?? "not_started",
+    parserType: input.parserType,
+    parserVersion: input.parserVersion
   };
 
   db.prepare(
-    `INSERT INTO documents (id, building_id, document_type, file_url, classification_confidence, status)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO documents (
+      id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     document.id,
     document.buildingId,
     document.documentType,
     document.fileUrl,
     document.classificationConfidence,
-    document.status
+    document.status,
+    document.documentCategory,
+    document.reportingYear ?? null,
+    document.parsedStatus,
+    document.parserType ?? null,
+    document.parserVersion ?? null
   );
 
   recordAuditEvent({
@@ -4409,7 +5705,12 @@ export function createDocument(input: { buildingId: string; documentType: string
     action: "document_uploaded",
     actorType: "owner",
     summary: `${document.documentType} document was attached to the building workspace.`,
-    metadataJson: JSON.stringify({ fileUrl: document.fileUrl, status: document.status })
+    metadataJson: JSON.stringify({
+      fileUrl: document.fileUrl,
+      status: document.status,
+      documentCategory: document.documentCategory,
+      reportingYear: document.reportingYear ?? null
+    })
   });
 
   return document;
@@ -4528,6 +5829,359 @@ export function attachDocumentEvidence(input: {
     documentType: document.document_type,
     requirementType: requirement.requirement_type
   } satisfies EvidenceLinkRecord;
+}
+
+export function registerReportingDocument(input: {
+  reportingCycleId: string;
+  documentType: string;
+  documentCategory: ReportingDocumentCategory;
+  fileUrl?: string;
+}) {
+  const cycle = getReportingCycleById(input.reportingCycleId);
+  return createDocument({
+    buildingId: cycle.buildingId,
+    reportingYear: cycle.reportingYear,
+    documentType: input.documentType,
+    documentCategory: input.documentCategory,
+    fileUrl: input.fileUrl
+  });
+}
+
+function buildDocumentExtractionPayload(document: ReportingDocument, building: Building) {
+  const defaultGfa = building.grossFloorArea ?? Math.round((building.grossSquareFeet ?? 0) * 0.95);
+  const energyBase = Math.max(1, Math.round(defaultGfa));
+  const fileSignal = document.fileUrl.length + document.id.length;
+  const electricityKwh = energyBase * 10 + fileSignal;
+  const gasTherms = Math.round(energyBase * 0.35 + (fileSignal % 97));
+
+  switch (document.documentCategory) {
+    case "espm_export":
+      return [
+        { fieldKey: "espm_property_id", value: `ESPM-${building.bin ?? building.id}` },
+        { fieldKey: "espm_property_name", value: building.name },
+        { fieldKey: "gross_floor_area_total", value: defaultGfa },
+        { fieldKey: "gfa_by_property_type", value: { multifamily: defaultGfa } },
+        { fieldKey: "energy_by_source", value: { electricity_kwh: electricityKwh, natural_gas_therms: gasTherms } },
+        { fieldKey: "meter_count", value: 4 }
+      ];
+    case "utility_bill":
+      return [
+        {
+          fieldKey: "energy_by_source",
+          value: {
+            electricity_kwh: electricityKwh + 750,
+            natural_gas_therms: gasTherms + 120
+          }
+        },
+        { fieldKey: "meter_count", value: 6 }
+      ];
+    case "prior_ll97_report":
+      return [
+        { fieldKey: "gross_floor_area_total", value: defaultGfa },
+        { fieldKey: "prior_year_compliance_status", value: building.article === "321" ? "noncompliant_then_remediated" : "reported" },
+        { fieldKey: "carryforward_from_2025", value: true }
+      ];
+    case "engineering_report":
+      return [
+        { fieldKey: "approved_adjustment_type", value: "external_constraints" },
+        { fieldKey: "approval_reference", value: `ENG-${building.id.toUpperCase()}` },
+        { fieldKey: "supporting_plan_status", value: "submitted_with_engineering_package" }
+      ];
+    case "owner_attestation":
+    default:
+      return [
+        { fieldKey: "bbl", value: building.bbl ?? "" },
+        { fieldKey: "bin", value: building.bin ?? "" },
+        { fieldKey: "address", value: `${building.addressLine1}, ${building.city}, ${building.state} ${building.zip}` },
+        { fieldKey: "espm_shared_with_city", value: true }
+      ].filter((entry) => entry.value !== "");
+  }
+}
+
+export function extractDocumentIntoReportingInputs(documentId: string) {
+  const db = getDatabase();
+  const document = db
+    .prepare(
+      `SELECT id, building_id, document_type, file_url, classification_confidence, status, document_category, reporting_year, parsed_status, parser_type, parser_version
+       FROM documents
+       WHERE id = ?`
+    )
+    .get(documentId) as
+    | {
+        id: string;
+        building_id: string;
+        document_type: string;
+        file_url: string;
+        classification_confidence: number | null;
+        status: string;
+        document_category: ReportingDocumentCategory | null;
+        reporting_year: number | null;
+        parsed_status: ReportingDocumentParsedStatus | null;
+        parser_type: string | null;
+        parser_version: string | null;
+      }
+    | undefined;
+
+  if (!document) {
+    throw new Error(`Document not found: ${documentId}`);
+  }
+
+  const reportingYear = document.reporting_year ?? 2026;
+  const workspace = getReportingWorkspaceByBuildingId(document.building_id, reportingYear);
+  const building = getBuildingById(document.building_id);
+  const extractionMethod = `category:${document.document_category ?? "owner_attestation"}`;
+  const proposals = buildDocumentExtractionPayload(
+    {
+      id: document.id,
+      buildingId: document.building_id,
+      reportingYear,
+      documentType: document.document_type,
+      documentCategory: document.document_category ?? "owner_attestation",
+      fileUrl: document.file_url,
+      classificationConfidence: document.classification_confidence ?? undefined,
+      status: document.status,
+      parsedStatus: document.parsed_status ?? "not_started",
+      parserType: document.parser_type ?? undefined,
+      parserVersion: document.parser_version ?? undefined
+    },
+    building
+  );
+
+  for (const proposal of proposals) {
+    const extractionId = makeId("dex");
+    db.prepare(
+      `INSERT INTO document_extractions (id, document_id, field_key, value_json, confidence_score, page_ref, extraction_method)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(extractionId, document.id, proposal.fieldKey, serializeJson(proposal.value), 0.74, "p1", extractionMethod);
+
+    db.prepare(
+      `INSERT INTO input_values (
+        id, package_id, field_key, value_json, source_type, source_ref, confidence_score, review_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      makeId("inp"),
+      workspace.inputPackage.id,
+      proposal.fieldKey,
+      serializeJson(proposal.value),
+      "document_extraction",
+      document.id,
+      0.74,
+      "pending_review"
+    );
+  }
+
+  db.prepare(
+    `UPDATE documents
+     SET parsed_status = ?, parser_type = ?, parser_version = ?
+     WHERE id = ?`
+  ).run("review_required", "rules_based_prefill", calculationVersion, document.id);
+
+  db.prepare(
+    `UPDATE reporting_input_packages
+     SET package_status = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run("review_required", workspace.inputPackage.id);
+
+  recordAuditEvent({
+    buildingId: document.building_id,
+    entityType: "document_extraction",
+    entityId: document.id,
+    action: "document_extracted",
+    actorType: "system",
+    summary: `${document.document_type} generated ${proposals.length} proposed reporting inputs.`,
+    metadataJson: JSON.stringify({
+      documentId: document.id,
+      documentCategory: document.document_category ?? "owner_attestation",
+      proposedFieldKeys: proposals.map((proposal) => proposal.fieldKey)
+    })
+  });
+
+  return getReportingWorkspaceById(workspace.cycle.id);
+}
+
+export function calculateReportingCycle(reportingCycleId: string) {
+  const db = getDatabase();
+  const workspace = getReportingWorkspaceById(reportingCycleId);
+  const acceptedInputs = getCycleAcceptedInputMap(workspace.inputPackage.id);
+  const activeModuleTypes = workspace.modules
+    .filter((module) => module.status === "active" || module.status === "blocked" || module.status === "complete")
+    .map((module) => module.moduleType);
+  const requiredFieldKeys = getRequiredFieldKeysForActiveModules(
+    workspace.cycle.articleSnapshot,
+    acceptedInputs,
+    activeModuleTypes
+  );
+  const missingRequiredInputs = requiredFieldKeys.filter((fieldKey) => !acceptedInputs.has(fieldKey));
+  const needsReview = getCycleNeedsReviewFieldKeys(workspace.inputPackage.id);
+  const warnings: string[] = [];
+  const energyBySource = toRecord(acceptedInputs.get("energy_by_source"));
+  const gfaByPropertyType = toRecord(acceptedInputs.get("gfa_by_property_type"));
+  const grossFloorAreaTotal =
+    valueAsNumber(acceptedInputs.get("gross_floor_area_total")) ??
+    valueAsNumber(acceptedInputs.get("gross_square_feet")) ??
+    0;
+  const pathwayMode =
+    acceptedInputs.get("article_321_pathway_mode") === "prescriptive" ? "prescriptive" : "performance";
+  let actualEmissionsTco2e = computeActualEmissions(energyBySource);
+  let adjustedActualEmissionsTco2e = actualEmissionsTco2e;
+  let emissionsLimitTco2e =
+    Object.keys(gfaByPropertyType).length > 0
+      ? computeLimitFromGfa(gfaByPropertyType)
+      : grossFloorAreaTotal * propertyTypeLimitFactors.default;
+  let adjustedEmissionsLimitTco2e = emissionsLimitTco2e;
+
+  if (activeModuleTypes.includes("deductions")) {
+    const touInputs = toRecord(acceptedInputs.get("tou_inputs"));
+    const tesInputs = toRecord(acceptedInputs.get("tes_inputs"));
+    const bankingInputs = toRecord(acceptedInputs.get("beneficial_electrification_banking"));
+    const touReduction = Math.max(0, Math.min(0.15, valueAsNumber(touInputs.reduction_factor) ?? 0.05));
+    const tesReduction = Math.max(0, Math.min(0.12, valueAsNumber(tesInputs.reduction_factor) ?? 0.03));
+    const bankingCredit = Math.max(0, valueAsNumber(bankingInputs.credit_tco2e) ?? 0);
+    adjustedActualEmissionsTco2e = Math.max(
+      0,
+      adjustedActualEmissionsTco2e * (1 - touReduction) * (1 - tesReduction) - bankingCredit
+    );
+    warnings.push("Deductions were applied using the structured MVP inputs and should be reviewed before filing.");
+  }
+
+  if (activeModuleTypes.includes("adjustment_320_7")) {
+    const offsetsPurchased = isTruthy(acceptedInputs.get("offsets_purchased"));
+    const constraintType = acceptedInputs.get("constraint_type");
+    if (!offsetsPurchased) {
+      missingRequiredInputs.push("offsets_purchased");
+      warnings.push("320.7 adjustment is active but offsets have not been confirmed.");
+    } else {
+      adjustedEmissionsLimitTco2e *= constraintType === "external_constraints" ? 1.1 : 1.05;
+    }
+  }
+
+  if (activeModuleTypes.includes("adjustment_320_8_320_9")) {
+    const carryforward = isTruthy(acceptedInputs.get("carryforward_from_2025"));
+    if (carryforward) {
+      adjustedEmissionsLimitTco2e *= 1.08;
+    } else {
+      adjustedEmissionsLimitTco2e *= 1.05;
+      warnings.push("320.8 / 320.9 adjustment is modeled without prior-year carryforward confirmation.");
+    }
+  }
+
+  if (workspace.cycle.articleSnapshot === "321" && pathwayMode === "prescriptive") {
+    const incompletePecms = workspace.pecmStatuses.filter(
+      (pecm) =>
+        pecm.applicability !== "not_applicable" &&
+        pecm.complianceStatus !== "in_compliance"
+    );
+
+    if (incompletePecms.length > 0) {
+      warnings.push("Article 321 prescriptive pathway remains blocked until all applicable PECMs are in compliance.");
+    }
+  }
+
+  if (workspace.attestations.some((attestation) => attestation.completionStatus === "blocked")) {
+    warnings.push("One or more attestations are blocked by owner-of-record mismatch.");
+  }
+
+  const overLimitTco2e = Math.max(0, adjustedActualEmissionsTco2e - adjustedEmissionsLimitTco2e);
+  const mitigationPending =
+    activeModuleTypes.includes("penalty_mitigation") && isTruthy(acceptedInputs.get("mitigation_requested"));
+  const filingDueDate = workspace.cycle.extensionRequested ? workspace.cycle.extendedDueDate ?? workspace.cycle.filingDueDate : workspace.cycle.filingDueDate;
+  const calculationOutputs = {
+    filing_due_date: filingDueDate,
+    actual_emissions_tco2e: Number(actualEmissionsTco2e.toFixed(2)),
+    adjusted_actual_emissions_tco2e: Number(adjustedActualEmissionsTco2e.toFixed(2)),
+    emissions_limit_tco2e: Number(emissionsLimitTco2e.toFixed(2)),
+    adjusted_emissions_limit_tco2e: Number(adjustedEmissionsLimitTco2e.toFixed(2)),
+    over_limit_tco2e: Number(overLimitTco2e.toFixed(2)),
+    late_penalty_usd: Math.round(calculateLateReportPenalty(grossFloorAreaTotal, 1)),
+    emissions_penalty_usd: Math.round(calculateEmissionsPenalty(adjustedActualEmissionsTco2e, adjustedEmissionsLimitTco2e)),
+    mitigation_pending: mitigationPending,
+    article_321_pathway_mode: pathwayMode
+  };
+
+  db.prepare(
+    `INSERT INTO calculation_runs (
+      id, reporting_cycle_id, calculation_version, missing_required_inputs_json, needs_review_json, warnings_json, calculation_outputs_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    makeId("calc"),
+    reportingCycleId,
+    calculationVersion,
+    serializeJson(Array.from(new Set(missingRequiredInputs))),
+    serializeJson(Array.from(new Set(needsReview))),
+    serializeJson(warnings),
+    serializeJson(calculationOutputs)
+  );
+
+  const packageStatus: ReportingPackageStatus =
+    missingRequiredInputs.length > 0 || needsReview.length > 0 ? "review_required" : "approved_for_calc";
+  db.prepare(
+    `UPDATE reporting_input_packages
+     SET package_status = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`
+  ).run(packageStatus, workspace.inputPackage.id);
+
+  for (const module of workspace.modules) {
+    let status = module.status;
+    let blockingReason: string | null = null;
+
+    if (module.status !== "inactive") {
+      if (module.moduleType === "article_321_report" && pathwayMode === "prescriptive") {
+        const incompletePecmCount = workspace.pecmStatuses.filter(
+          (pecm) =>
+            pecm.applicability !== "not_applicable" && pecm.complianceStatus !== "in_compliance"
+        ).length;
+        if (incompletePecmCount > 0) {
+          status = "blocked";
+          blockingReason = "Applicable PECMs remain incomplete.";
+        } else if (missingRequiredInputs.length === 0 && needsReview.length === 0) {
+          status = "complete";
+        }
+      } else if (module.moduleType === "adjustment_320_7" && !isTruthy(acceptedInputs.get("offsets_purchased"))) {
+        status = "blocked";
+        blockingReason = "Offsets purchase confirmation is required for the 320.7 module.";
+      } else if (missingRequiredInputs.length === 0 && needsReview.length === 0) {
+        status = "complete";
+      } else {
+        status = "blocked";
+        blockingReason = "Required inputs or reviews are still outstanding.";
+      }
+    }
+
+    db.prepare(
+      `UPDATE filing_modules
+       SET status = ?, blocking_reason = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`
+    ).run(status, blockingReason, module.id);
+  }
+
+  updateReportingCycleStatus(
+    reportingCycleId,
+    missingRequiredInputs.length > 0 || needsReview.length > 0 || warnings.some((warning) => warning.includes("blocked"))
+      ? "blocked"
+      : "ready",
+    filingDueDate
+  );
+
+  recordAuditEvent({
+    buildingId: workspace.cycle.buildingId,
+    entityType: "calculation_run",
+    entityId: reportingCycleId,
+    action: "reporting_cycle_calculated",
+    actorType: "system",
+    summary: `Reporting cycle ${workspace.cycle.reportingYear} calculations were refreshed.`,
+    metadataJson: JSON.stringify({
+      missingRequiredInputs,
+      needsReview,
+      warnings,
+      calculationOutputs
+    })
+  });
+
+  return getReportingWorkspaceById(reportingCycleId);
+}
+
+export function getLatestReportingCalculationRun(reportingCycleId: string) {
+  return getLatestCalculationRunByCycleId(reportingCycleId);
 }
 
 export function listBasPointsByBuildingId(buildingId: string): BasPointRecord[] {

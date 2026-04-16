@@ -18,7 +18,7 @@ export async function AppShell({
   currentPortfolioId?: string;
   currentBuildingId?: string;
   reportingYear?: number;
-  buildingSection?: "overview" | "compliance" | "documents" | "monitoring" | "recommendations";
+  buildingSection?: "overview" | "filing" | "compliance" | "documents" | "monitoring" | "recommendations";
   header?: ReactNode;
   kpis?: ReactNode;
 }>) {
@@ -47,6 +47,7 @@ export async function AppShell({
   const navItems = [
     { href: "/portfolios", label: "Portfolios" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/overview` : "/portfolios", label: "Buildings" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/filing` : "/portfolios", label: "Filing" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/compliance` : "/portfolios", label: "Compliance" },
     { href: firstBuildingId ? `/buildings/${firstBuildingId}/monitoring` : "/portfolios", label: "Monitoring" },
     {

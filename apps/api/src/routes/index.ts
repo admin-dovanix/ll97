@@ -10,7 +10,7 @@ import {
   updateBasPointMapping
 } from "@airwise/database";
 import { createPortfolio, importBuildings, listPortfolios } from "../modules/portfolios/portfolio.service.js";
-import { getBuildingById } from "../modules/buildings/building.service.js";
+import { getBuildingById, updateBuildingBasProfile } from "../modules/buildings/building.service.js";
 import { resolveCoverage } from "../modules/coverage/coverage.service.js";
 import { generateRequirements, getComplianceSummary } from "../modules/compliance/compliance.service.js";
 import { getDocumentWorkspace, linkDocumentEvidence, uploadDocument } from "../modules/documents/document.service.js";
@@ -37,6 +37,21 @@ import {
   getRecommendations,
   updateRecommendationActionRecord
 } from "../modules/recommendations/recommendation.service.js";
+import {
+  activateModule,
+  createReportingCycle,
+  extractReportingDocument,
+  getLatestCalculation,
+  getReportingWorkspaceByCycle,
+  getReportingWorkspace,
+  listReportingFields,
+  runReportingCalculation,
+  saveReportingInputValue,
+  reviewReportingInput,
+  updateAttestation,
+  updatePecm,
+  uploadReportingDocument
+} from "../modules/reporting/reporting.service.js";
 
 export async function registerRoutes(app: FastifyInstance) {
   function requireGatewayTokenHeader(request: { headers: Record<string, unknown> }) {
@@ -99,6 +114,30 @@ export async function registerRoutes(app: FastifyInstance) {
     return getBuildingById(params.id);
   });
 
+  app.post("/api/buildings/:id/bas-profile", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        basPresent: z.enum(["yes", "no", "unknown"]).optional(),
+        basVendor: z.string().optional(),
+        basProtocol: z.enum(["unknown", "bacnet_ip", "bacnet_mstp", "modbus", "proprietary", "other"]).optional(),
+        basAccessState: z.enum(["unknown", "no_access", "vendor_required", "exports_available", "direct_access_available"]).optional(),
+        pointListAvailable: z.enum(["yes", "no", "unknown"]).optional(),
+        schedulesAvailable: z.enum(["yes", "no", "unknown"]).optional(),
+        ventilationSystemArchetype: z
+          .enum(["unknown", "central_exhaust", "make_up_air_unit", "corridor_ahu", "garage_ventilation", "mixed_central"])
+          .optional(),
+        equipmentInventoryStatus: z.enum(["unknown", "not_started", "partial", "complete"]).optional(),
+        actorType: z.enum(["system", "owner", "operator", "rdp", "rcxa"]).optional()
+      })
+      .parse(request.body);
+
+    return updateBuildingBasProfile({
+      buildingId: params.id,
+      ...body
+    });
+  });
+
   app.get("/api/buildings/:id/public-sources", async (request) => {
     const params = z.object({ id: z.string() }).parse(request.params);
     return getPublicSourceWorkspaceByBuildingId(params.id);
@@ -129,6 +168,164 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/api/buildings/:id/compliance", async (request) => {
     const params = z.object({ id: z.string() }).parse(request.params);
     return getComplianceSummary(params.id);
+  });
+
+  app.post("/api/buildings/:id/reporting-cycles", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ reportingYear: z.number().default(2026) }).parse(request.body ?? {});
+    return createReportingCycle(params.id, body.reportingYear);
+  });
+
+  app.get("/api/buildings/:id/reporting-cycles/:year", async (request) => {
+    const params = z.object({ id: z.string(), year: z.coerce.number() }).parse(request.params);
+    return getReportingWorkspace(params.id, params.year);
+  });
+
+  app.get("/api/reporting/fields", async () => {
+    return {
+      items: listReportingFields()
+    };
+  });
+
+  app.post("/api/reporting-cycles/:id/documents", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        documentType: z.string(),
+        documentCategory: z.enum(["espm_export", "utility_bill", "prior_ll97_report", "engineering_report", "owner_attestation"]),
+        fileUrl: z.string().optional()
+      })
+      .parse(request.body);
+
+    return uploadReportingDocument({
+      reportingCycleId: params.id,
+      documentType: body.documentType,
+      documentCategory: body.documentCategory,
+      fileUrl: body.fileUrl
+    });
+  });
+
+  app.post("/api/documents/:id/extract", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    return extractReportingDocument(params.id);
+  });
+
+  app.get("/api/reporting-cycles/:id/input-values", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const workspace = getReportingWorkspaceByCycle(params.id);
+    return {
+      cycle: workspace.cycle,
+      inputPackage: workspace.inputPackage,
+      inputValues: workspace.inputValues,
+      requiredFieldKeys: workspace.requiredFieldKeys,
+      blockers: workspace.blockers
+    };
+  });
+
+  app.post("/api/reporting-cycles/:id/input-values", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z.object({ fieldKey: z.string(), value: z.unknown() }).parse(request.body);
+    return saveReportingInputValue({
+      reportingCycleId: params.id,
+      fieldKey: body.fieldKey,
+      value: body.value
+    });
+  });
+
+  app.post("/api/reporting-cycles/:id/input-values/review", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        inputValueId: z.string(),
+        reviewStatus: z.enum(["pending_review", "accepted", "rejected"])
+      })
+      .parse(request.body);
+    return reviewReportingInput({
+      reportingCycleId: params.id,
+      inputValueId: body.inputValueId,
+      reviewStatus: body.reviewStatus
+    });
+  });
+
+  app.post("/api/reporting-cycles/:id/modules/:moduleType/activate", async (request) => {
+    const params = z
+      .object({
+        id: z.string(),
+        moduleType: z.enum([
+          "extension",
+          "article_320_report",
+          "article_321_report",
+          "deductions",
+          "adjustment_320_7",
+          "adjustment_320_8_320_9",
+          "penalty_mitigation"
+        ])
+      })
+      .parse(request.params);
+
+    return activateModule({
+      reportingCycleId: params.id,
+      moduleType: params.moduleType
+    });
+  });
+
+  app.post("/api/reporting-cycles/:id/attestations", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        role: z.enum(["owner", "rdp", "rcxa"]),
+        signerName: z.string().optional(),
+        ownerOfRecordMatchStatus: z.enum(["unknown", "matched", "mismatch"]),
+        completionStatus: z.enum(["pending", "completed"])
+      })
+      .parse(request.body);
+
+    return updateAttestation({
+      reportingCycleId: params.id,
+      role: body.role,
+      signerName: body.signerName,
+      ownerOfRecordMatchStatus: body.ownerOfRecordMatchStatus,
+      completionStatus: body.completionStatus
+    });
+  });
+
+  app.post("/api/reporting-cycles/:id/pecms/:pecmKey", async (request) => {
+    const params = z.object({ id: z.string(), pecmKey: z.string() }).parse(request.params);
+    const body = z
+      .object({
+        applicability: z.enum(["required", "not_applicable", "unknown"]),
+        complianceStatus: z.enum(["in_compliance", "not_in_compliance", "not_applicable", "unknown"]),
+        evidenceState: z.enum(["missing", "pending_review", "accepted", "rejected"]),
+        reviewerRole: z.enum(["owner", "rdp", "rcxa"]).optional(),
+        notes: z.string().optional()
+      })
+      .parse(request.body);
+
+    return updatePecm({
+      reportingCycleId: params.id,
+      pecmKey: params.pecmKey,
+      applicability: body.applicability,
+      complianceStatus: body.complianceStatus,
+      evidenceState: body.evidenceState,
+      reviewerRole: body.reviewerRole,
+      notes: body.notes
+    });
+  });
+
+  app.post("/api/reporting-cycles/:id/calculate", async (request) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    return runReportingCalculation(params.id);
+  });
+
+  app.get("/api/reporting-cycles/:id/calculation-runs/latest", async (request, reply) => {
+    const params = z.object({ id: z.string() }).parse(request.params);
+    const result = getLatestCalculation(params.id);
+
+    if (!result) {
+      return reply.code(404).send({ error: "No calculation run found for reporting cycle" });
+    }
+
+    return result;
   });
 
   app.get("/api/buildings/:id/documents", async (request) => {

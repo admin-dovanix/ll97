@@ -71,19 +71,19 @@ export default async function FilingPage({
               </button>
             </form>
           }
-          description="This page answers one question fast: are we ready to file or not, and what still blocks submission?"
+          description="Filing is the submission workspace. Use it to assemble the package, review accepted inputs, and see what still blocks filing."
           eyebrow="Filing"
           status={<StatusBadge label={`${reporting.cycle.articleSnapshot} / ${reporting.cycle.pathwaySnapshot}`} tone="accent" />}
-          title={`${building.name} filing workspace`}
+          title={`${building.name} filing package`}
         />
       }
       kpis={
         <KPIStrip
           items={[
-            { label: "Ready to file", value: filingSummary.readinessLabel, emphasize: true },
+            { label: "Ready to file", value: filingSummary.readinessLabel, tone: filingSummary.readyToFile ? "success" : "warning" },
             { label: "Complete", value: `${filingSummary.completionPercent}%` },
-            { label: "Ready inputs", value: filingSummary.readyCount.toString() },
-            { label: "Blockers", value: filingSummary.blockerCount.toString() }
+            { label: "Ready inputs", value: filingSummary.readyCount.toString(), tone: filingSummary.readyCount > 0 ? "success" : "default" },
+            { label: "Blockers", value: filingSummary.blockerCount.toString(), tone: filingSummary.blockerCount > 0 ? "danger" : "default" }
           ]}
         />
       }

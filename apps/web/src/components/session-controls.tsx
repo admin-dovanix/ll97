@@ -7,8 +7,8 @@ export async function SessionControls() {
   const session = await requireAuthenticatedSession();
 
   return (
-    <section className="rounded-lg border border-border bg-panel shadow-inset">
-      <div className="grid gap-3 px-4 py-4">
+    <section className="rounded-lg border border-border bg-panel">
+      <div className="grid gap-4 px-5 py-5">
         <div className="space-y-1">
           <p className="eyebrow">Access context</p>
           <div className="flex flex-wrap items-center gap-2">
@@ -16,7 +16,7 @@ export async function SessionControls() {
             <StatusBadge label={session.activeRole ?? "No role"} tone="neutral" />
           </div>
         </div>
-        <div className="space-y-0.5 text-sm leading-6 text-foreground/76">
+        <div className="space-y-0.5 text-sm leading-6 text-foreground/68">
           {session.user.email}
           <br />
           {session.activePortfolioName ?? "No active portfolio"}

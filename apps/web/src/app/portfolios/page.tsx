@@ -98,10 +98,10 @@ export default async function PortfoliosPage() {
       kpis={
         <KPIStrip
           items={[
-            { label: "Total penalty exposure", value: formatCurrency(totalPenalty), emphasize: true },
-            { label: "Buildings non-compliant", value: nonCompliant.toString() },
-            { label: "Buildings at risk", value: atRisk.toString() },
-            { label: "Compliance rate", value: formatPercent(complianceRate) }
+            { label: "Total penalty exposure", value: formatCurrency(totalPenalty), detail: "2026 filing year", tone: "danger" },
+            { label: "Non-compliant buildings", value: nonCompliant.toString(), detail: `Of ${buildingSummaries.length} total`, tone: nonCompliant > 0 ? "danger" : "default" },
+            { label: "Buildings at risk", value: atRisk.toString(), detail: atRisk > 0 ? "Operational exposure present" : "No additional exposure" },
+            { label: "Compliance rate", value: formatPercent(complianceRate), detail: "Portfolio average", tone: complianceRate === 0 ? "danger" : "default" }
           ]}
         />
       }

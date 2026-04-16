@@ -24,7 +24,7 @@ export function SidePanel({
         <>
           <motion.button
             aria-label="Close detail panel"
-            className="fixed inset-0 z-40 bg-overlay/45"
+            className="fixed inset-0 z-40 bg-overlay/36"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -42,20 +42,20 @@ export function SidePanel({
             transition={{ duration: 0.2 }}
             role="dialog"
           >
-            <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
+            <header className="flex items-start justify-between gap-4 border-b border-border px-6 py-5">
               <div className="space-y-1">
-                <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Detail</p>
-                <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+                <p className="eyebrow">Detail</p>
+                <h2 className="text-[18px] font-medium tracking-[-0.02em] text-foreground">{title}</h2>
                 {subtitle ? <p className="text-sm text-muted-foreground">{subtitle}</p> : null}
               </div>
               <div className="flex items-center gap-2">
                 {actions}
-                <Button aria-label="Close panel" size="icon" variant="secondary" onClick={onClose}>
+                <Button aria-label="Close panel" size="icon" variant="ghost" onClick={onClose}>
                   X
                 </Button>
               </div>
             </header>
-            <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
           </motion.aside>
         </>
       ) : null}

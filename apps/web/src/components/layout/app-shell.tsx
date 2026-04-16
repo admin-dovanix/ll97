@@ -45,20 +45,21 @@ export async function AppShell({
   }));
 
   const navItems = [
-    { href: "/portfolios", label: "Portfolios" },
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/overview` : "/portfolios", label: "Buildings" },
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/filing` : "/portfolios", label: "Filing" },
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/compliance` : "/portfolios", label: "Compliance" },
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/monitoring` : "/portfolios", label: "Monitoring" },
+    { href: "/portfolios", label: "Portfolios", section: "Overview" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/overview` : "/portfolios", label: "Buildings", section: "Overview" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/filing` : "/portfolios", label: "Filing", section: "Compliance" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/compliance` : "/portfolios", label: "Requirements", section: "Compliance" },
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/monitoring` : "/portfolios", label: "Monitoring", section: "Operations" },
     {
       href: firstBuildingId ? `/buildings/${firstBuildingId}/recommendations` : "/portfolios",
-      label: "Recommendations"
+      label: "Recommendations",
+      section: "Operations"
     },
     ...(session.activeRole === "owner" || session.activeRole === "operator"
-      ? [{ href: "/commands", label: "Commands" }]
+      ? [{ href: "/commands", label: "Commands", section: "Operations" }]
       : []),
-    { href: firstBuildingId ? `/buildings/${firstBuildingId}/documents` : "/portfolios", label: "Documents" },
-    ...(session.activeRole === "owner" ? [{ href: "/imports", label: "Data" }] : [])
+    { href: firstBuildingId ? `/buildings/${firstBuildingId}/documents` : "/portfolios", label: "Documents", section: "Operations" },
+    ...(session.activeRole === "owner" ? [{ href: "/imports", label: "Data", section: "Operations" }] : [])
   ];
 
   const globalStatusLabel =
@@ -77,7 +78,7 @@ export async function AppShell({
   return (
     <div className="min-h-screen bg-background text-foreground">
       <SidebarNav items={navItems} workspaceLabel={`${session.user.name} · ${session.activeRole ?? "member"}`} />
-      <div className="lg:pl-72">
+      <div className="lg:pl-[220px]">
         <ContextBar
           buildingOptions={buildingOptions}
           currentBuildingId={currentBuildingId}
@@ -87,12 +88,12 @@ export async function AppShell({
           portfolioOptions={portfolioOptions}
           reportingYear={reportingYear}
         />
-        <main className="px-4 py-3 lg:px-context-x">
-          <div className="grid gap-3">
+        <main className="px-4 py-4 lg:px-8 lg:py-8">
+          <div className="grid gap-5">
             {header}
             {kpis}
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_16.5rem]">
-              <div className="grid gap-3">{children}</div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
+              <div className="grid gap-4">{children}</div>
               <div className="hidden xl:block">
                 <div className="sticky top-24">
                   <SessionControls />

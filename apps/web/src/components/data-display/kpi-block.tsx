@@ -5,24 +5,39 @@ export function KPIBlock({
   value,
   detail,
   trend,
-  emphasize = false
+  emphasize = false,
+  tone = "default"
 }: {
   label: string;
   value: string;
   detail?: string;
   trend?: "up" | "down" | "flat";
   emphasize?: boolean;
+  tone?: "default" | "danger" | "warning" | "success" | "accent";
 }) {
   return (
     <div
       className={cn(
-        "min-w-0 border-b border-border px-5 py-5 md:border-r md:border-b-0",
+        "min-w-0 rounded-lg border border-border bg-panel px-5 py-5",
         emphasize ? "text-foreground" : "text-muted-foreground"
       )}
     >
-      <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-foreground/52">{label}</p>
+      <p className="table-header">{label}</p>
       <div className="mt-2 flex items-end gap-2">
-        <p className={cn("text-[28px] font-medium leading-none tracking-[-0.02em]", emphasize ? "text-danger" : "text-foreground")}>
+        <p
+          className={cn(
+            "text-[28px] font-medium leading-none tracking-[-0.02em]",
+            tone === "danger"
+              ? "text-danger"
+              : tone === "warning"
+                ? "text-warning"
+              : tone === "success"
+                ? "text-success"
+                : tone === "accent"
+                  ? "text-accent"
+                  : "text-foreground"
+          )}
+        >
           {value}
         </p>
         {trend ? (

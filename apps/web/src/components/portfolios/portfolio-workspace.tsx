@@ -47,14 +47,29 @@ export function PortfolioWorkspace({
 }) {
   const [selected, setSelected] = useState<PortfolioRow | null>(null);
 
+  function readinessChipClasses(tone: PortfolioRow["readinessTone"]) {
+    switch (tone) {
+      case "danger":
+        return "border-danger/18 bg-danger/8 text-danger";
+      case "warning":
+        return "border-warning/20 bg-warning/10 text-warning";
+      case "success":
+        return "border-success/18 bg-success/8 text-success";
+      case "accent":
+        return "border-accent/18 bg-accent/8 text-accent";
+      default:
+        return "border-border bg-panelAlt text-foreground/72";
+    }
+  }
+
   const columns: DataTableColumn<PortfolioRow>[] = [
     {
       id: "building",
-      header: "Building name",
+      header: "Building",
       sortValue: (row) => row.penalty,
       cell: (row) => (
         <div className="space-y-1">
-          <p className="font-medium text-foreground">{row.buildingName}</p>
+          <p className="text-[14px] font-medium text-foreground">{row.buildingName}</p>
           <p className="text-xs text-muted-foreground">{row.address}</p>
         </div>
       )
@@ -69,46 +84,60 @@ export function PortfolioWorkspace({
       id: "pathway",
       header: "Pathway",
       sortValue: (row) => row.pathway,
-      cell: (row) => (
-        <div className="space-y-1">
-          <p>{row.article}</p>
-          <p className="font-mono text-xs text-muted-foreground">{row.pathway}</p>
-        </div>
-      )
+      cell: (row) => <span className="text-[13px] text-foreground/72">{row.article} · {row.pathway}</span>
     },
     {
       id: "readiness",
       header: "Readiness",
       sortValue: (row) => row.readinessLabel,
-      cell: (row) => <StatusBadge label={row.readinessLabel} tone={row.readinessTone} />
+      cell: (row) => (
+        <span className={`inline-flex rounded-md border px-2.5 py-1 text-[11px] font-medium tracking-[0.02em] ${readinessChipClasses(row.readinessTone)}`}>
+          {row.readinessLabel}
+        </span>
+      )
     },
     {
       id: "emissions",
       header: "Emissions vs limit",
       sortValue: (row) => row.emissionsSignal,
-      cell: (row) => row.emissionsSignal
+      cell: (row) => (
+        <span className={row.emissionsSignal.includes("Above") ? "text-danger" : "text-foreground/68"}>{row.emissionsSignal}</span>
+      )
     },
     {
       id: "penalty",
       header: "Penalty ($)",
       align: "right",
       sortValue: (row) => row.penalty,
-      cell: (row) => formatCurrency(row.penalty)
+      cell: (row) => <span className="font-medium text-danger">{formatCurrency(row.penalty)}</span>
     },
     {
       id: "issues",
       header: "Open issues",
       align: "right",
       sortValue: (row) => row.openIssues,
-      cell: (row) => row.openIssues.toString()
+      cell: (row) => (
+        <span
+          className={`inline-flex h-[22px] w-[22px] items-center justify-center rounded-full text-[11px] font-medium ${
+            row.openIssues > 0 ? "bg-warning/16 text-warning" : "bg-panelAlt text-foreground/46"
+          }`}
+        >
+          {row.openIssues}
+        </span>
+      )
     },
     {
       id: "action",
       header: "Action",
       className: "whitespace-nowrap",
       cell: (row) => (
-        <span className="font-medium text-accent" data-no-row-click="true" onClick={(event) => event.stopPropagation()}>
-          <Link href={`/buildings/${row.id}/overview`}>{row.actionLabel}</Link>
+        <span data-no-row-click="true" onClick={(event) => event.stopPropagation()}>
+          <Link
+            className={`text-sm font-medium hover:underline ${row.actionLabel === "Start here" ? "text-success" : "text-accent"}`}
+            href={`/buildings/${row.id}/overview`}
+          >
+            {row.actionLabel} →
+          </Link>
         </span>
       )
     }
@@ -118,7 +147,7 @@ export function PortfolioWorkspace({
     <>
       <SectionContainer
         title="Portfolio risk register"
-        description="Every building now enters through one overview path. Readiness shows whether the next move is compliance-first, BAS prep, live monitoring, or supervised control."
+        description="Each building enters through one portfolio view. Readiness indicates where a portfolio manager should focus first."
       >
         <DataTable
           columns={columns}
@@ -132,7 +161,7 @@ export function PortfolioWorkspace({
       <div className="grid gap-4 xl:grid-cols-2">
         <SectionContainer
           title="Create portfolio"
-          description="Use this workspace to onboard a new owner or carve out a new operating scope without leaving the dashboard."
+          description="Onboard a new owner or define a new operating scope without leaving the dashboard."
         >
           {canEdit ? (
             <form action={createPortfolioAction} className="grid gap-3">
@@ -256,18 +285,18 @@ export function PortfolioWorkspace({
                 <StatusBadge label={`${selected.article} / ${selected.pathway}`} tone="accent" />
                 <StatusBadge label={selected.readinessLabel} tone={selected.readinessTone} />
               </div>
-              <div className="grid gap-3 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-3">
+              <div className="grid gap-3 rounded-lg border border-border bg-panelAlt p-4 md:grid-cols-3">
                 <div>
                   <p className="eyebrow">Penalty exposure</p>
-                  <p className="text-lg font-semibold">{formatCurrency(selected.penalty)}</p>
+                  <p className="text-lg font-medium text-danger">{formatCurrency(selected.penalty)}</p>
                 </div>
                 <div>
                   <p className="eyebrow">Blockers</p>
-                  <p className="text-lg font-semibold">{selected.blockerCount}</p>
+                  <p className="text-lg font-medium">{selected.blockerCount}</p>
                 </div>
                 <div>
                   <p className="eyebrow">Open issues</p>
-                  <p className="text-lg font-semibold">{selected.openIssues}</p>
+                  <p className="text-lg font-medium">{selected.openIssues}</p>
                 </div>
               </div>
             </section>

@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { DataTable, type DataTableColumn } from "../data-display/data-table";
 import { SidePanel } from "../panels/side-panel";
-import { ActionButton } from "../ui/action-button";
 import { SectionContainer } from "../ui/section-container";
 import { StatusBadge } from "../ui/status-badge";
 import { requirementStatusTone } from "../../lib/status";
@@ -46,12 +46,14 @@ type AuditEventRow = {
 };
 
 export function ComplianceWorkspace({
+  buildingId,
   requirements,
   documents,
   auditEvents,
   estimatedLateReportPenalty,
   estimatedEmissionsOverLimitPenalty
 }: {
+  buildingId: string;
   requirements: RequirementRow[];
   documents: EvidenceDocumentRow[];
   auditEvents: AuditEventRow[];
@@ -162,15 +164,15 @@ export function ComplianceWorkspace({
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-md border border-border bg-panelAlt p-4">
               <p className="eyebrow">Over emissions</p>
-              <p className="text-xl font-semibold">{formatCurrency(estimatedEmissionsOverLimitPenalty)}</p>
+              <p className="text-xl font-medium">{formatCurrency(estimatedEmissionsOverLimitPenalty)}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4">
               <p className="eyebrow">Filing penalties</p>
-              <p className="text-xl font-semibold">{formatCurrency(estimatedLateReportPenalty)}</p>
+              <p className="text-xl font-medium">{formatCurrency(estimatedLateReportPenalty)}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4">
               <p className="eyebrow">Total</p>
-              <p className="text-xl font-semibold">{formatCurrency(totalPenalty)}</p>
+              <p className="text-xl font-medium text-danger">{formatCurrency(totalPenalty)}</p>
             </div>
           </div>
         </SectionContainer>
@@ -220,7 +222,7 @@ export function ComplianceWorkspace({
               </div>
               <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
                 <p>Due: {formatDateTime(selected.due)}</p>
-                <p>Owner: {selected.owner.toUpperCase()}</p>
+                <p>Owner: {selected.owner}</p>
                 {selected.blockingReason ? <p>Blocker: {selected.blockingReason}</p> : null}
               </div>
             </section>
@@ -237,15 +239,15 @@ export function ComplianceWorkspace({
               <div className="grid gap-3 rounded-md border border-border bg-panelAlt p-4 md:grid-cols-3">
                 <div>
                   <p className="eyebrow">Accepted</p>
-                  <p className="text-lg font-semibold text-foreground">{selected.acceptedEvidenceCount}</p>
+                  <p className="text-lg font-medium text-foreground">{selected.acceptedEvidenceCount}</p>
                 </div>
                 <div>
                   <p className="eyebrow">Pending</p>
-                  <p className="text-lg font-semibold text-foreground">{selected.pendingEvidenceCount}</p>
+                  <p className="text-lg font-medium text-foreground">{selected.pendingEvidenceCount}</p>
                 </div>
                 <div>
                   <p className="eyebrow">Rejected</p>
-                  <p className="text-lg font-semibold text-foreground">{selected.rejectedEvidenceCount}</p>
+                  <p className="text-lg font-medium text-foreground">{selected.rejectedEvidenceCount}</p>
                 </div>
               </div>
             </section>
@@ -267,7 +269,12 @@ export function ComplianceWorkspace({
               )}
             </section>
 
-            <ActionButton type="button">{selected.actionLabel}</ActionButton>
+            <Link
+              className="inline-flex min-h-11 items-center justify-center rounded-md border border-sidebar bg-sidebar px-4 text-sm font-medium text-white transition-colors hover:bg-sidebar/94"
+              href={selected.evidence === "accepted" ? `/buildings/${buildingId}/filing` : `/buildings/${buildingId}/documents`}
+            >
+              {selected.evidence === "accepted" ? "Open filing workspace" : selected.actionLabel}
+            </Link>
           </div>
         ) : null}
       </SidePanel>

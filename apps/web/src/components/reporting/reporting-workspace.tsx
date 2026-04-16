@@ -142,16 +142,16 @@ export function ReportingWorkspace({
   return (
     <>
       <SectionContainer
-        title="Filing status"
-        description="This page should answer one question immediately: are we ready to file or not, and what still needs attention?"
+        title="Submission readiness"
+        description="This section answers one question immediately: can the team file now, or what still blocks submission?"
       >
         <div className="grid gap-4">
-          <div className="rounded-md border border-border bg-panelAlt p-4">
+          <div className="rounded-lg border border-border bg-panelAlt p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="eyebrow">Submission answer</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{filingSummary.readinessLabel}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
+                <p className="mt-2 text-[28px] font-medium tracking-[-0.02em] text-foreground">{filingSummary.readinessLabel}</p>
+                <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
                   {filingSummary.readyToFile
                     ? "All required inputs are accepted and no blockers are currently recorded."
                     : "At least one required input, review item, or attestation still blocks submission."}
@@ -164,26 +164,26 @@ export function ReportingWorkspace({
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Complete</p>
-              <p className="text-lg font-semibold text-foreground">{filingSummary.completionPercent}%</p>
+              <p className="text-lg font-medium text-foreground">{filingSummary.completionPercent}%</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Blockers</p>
-              <p className="text-lg font-semibold text-foreground">{filingSummary.blockerCount}</p>
+              <p className="text-lg font-medium text-foreground">{filingSummary.blockerCount}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Ready inputs</p>
-              <p className="text-lg font-semibold text-foreground">{filingSummary.readyCount}</p>
+              <p className="text-lg font-medium text-foreground">{filingSummary.readyCount}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Pending inputs</p>
-              <p className="text-lg font-semibold text-foreground">{filingSummary.pendingCount}</p>
+              <p className="text-lg font-medium text-foreground">{filingSummary.pendingCount}</p>
             </div>
           </div>
 
           <div className="grid gap-3 md:grid-cols-4">
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Filing year</p>
-              <p className="text-lg font-semibold text-foreground">{reportingYear}</p>
+              <p className="text-lg font-medium text-foreground">{reportingYear}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Cycle status</p>
@@ -191,7 +191,7 @@ export function ReportingWorkspace({
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Due date</p>
-              <p className="text-lg font-semibold text-foreground">{formatDate(filingDueDate)}</p>
+              <p className="text-lg font-medium text-foreground">{formatDate(filingDueDate)}</p>
             </div>
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
               <p className="eyebrow">Owner match</p>

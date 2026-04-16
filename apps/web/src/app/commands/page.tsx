@@ -74,9 +74,9 @@ export default async function CommandsPage() {
       kpis={
         <KPIStrip
           items={[
-            { label: "Requested", value: pendingCount.toString(), emphasize: true },
+            { label: "Requested", value: pendingCount.toString(), tone: pendingCount > 0 ? "warning" : "default" },
             { label: "Executed", value: executedCount.toString() },
-            { label: "Failed", value: failedCount.toString() },
+            { label: "Failed", value: failedCount.toString(), tone: failedCount > 0 ? "danger" : "default" },
             { label: "Writable targets", value: pointOptions.length.toString() }
           ]}
         />

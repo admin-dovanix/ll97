@@ -175,40 +175,41 @@ export default async function CompliancePage({
               </button>
             </form>
           }
-          description="Penalty exposure, filing blockers, and next actions are consolidated here so an owner or asset manager can decide what to do next."
+          description="Compliance readiness, evidence posture, and penalty exposure stay in one review surface so a portfolio manager can see what is blocked, how serious it is, and who needs to act."
           eyebrow="Compliance"
           status={<StatusBadge label={`${building.article} / ${building.pathway}`} tone="accent" />}
-          title={`${building.name} compliance`}
+          title={`${building.name} LL97 workspace`}
         />
       }
       kpis={
-        <section className="overflow-hidden rounded-lg border border-danger/18 bg-gradient-to-r from-danger/8 via-panel to-panel shadow-inset">
+        <section className="overflow-hidden rounded-lg border border-border bg-panel">
           <div className="grid gap-0 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
             <div className="border-b border-border px-6 py-5 xl:border-b-0 xl:border-r">
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-danger">Penalty exposure</p>
               <div className="mt-3 flex flex-wrap items-end gap-3">
-                <p className="text-[3.35rem] font-semibold leading-none tracking-tight text-danger">{formatCurrency(totalPenalty)}</p>
+                <p className="text-[3.5rem] font-medium leading-none tracking-[-0.03em] text-danger">{formatCurrency(totalPenalty)}</p>
                 <StatusBadge status={buildingStatus} />
               </div>
-              <p className="mt-4 max-w-3xl text-base leading-7 text-foreground/84">
+              <p className="mt-4 max-w-3xl text-[16px] leading-8 text-foreground/84">
                 {building.name} faces {formatCurrency(totalPenalty)} in LL97 penalties. {compliance.evidenceGapCount} evidence
-                {compliance.evidenceGapCount === 1 ? " gap is" : " gaps are"} blocking compliance. Deadline: {formatDate(earliestDueDate)}.
+                {compliance.evidenceGapCount === 1 ? " gap is" : " gaps are"} blocking compliance. {compliance.blockerCount} active
+                {compliance.blockerCount === 1 ? " blocker remains" : " blockers remain"}. Deadline: {formatDate(earliestDueDate)}.
               </p>
             </div>
             <div className="grid gap-0 sm:grid-cols-3">
               <div className="border-b border-border px-5 py-5 sm:border-r sm:border-b-0">
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Filing status</p>
-                <p className="mt-3 text-2xl font-semibold capitalize tracking-tight text-foreground">{buildingStatus.replace("-", " ")}</p>
+                <p className="mt-3 text-2xl font-medium capitalize tracking-[-0.02em] text-foreground">{buildingStatus.replace("-", " ")}</p>
                 <p className="mt-1 text-sm text-foreground/68">Current LL97 position</p>
               </div>
               <div className="border-b border-border px-5 py-5 sm:border-r sm:border-b-0">
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Evidence gaps</p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{compliance.evidenceGapCount}</p>
+                <p className="mt-3 text-2xl font-medium tracking-[-0.02em] text-foreground">{compliance.evidenceGapCount}</p>
                 <p className="mt-1 text-sm text-foreground/68">Items still missing</p>
               </div>
               <div className="px-5 py-5">
                 <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-foreground/58">Requirements ready</p>
-                <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">{compliance.readyRequirementCount}</p>
+                <p className="mt-3 text-2xl font-medium tracking-[-0.02em] text-foreground">{compliance.readyRequirementCount}</p>
                 <p className="mt-1 text-sm text-foreground/68">Ready to submit</p>
               </div>
             </div>
@@ -232,6 +233,7 @@ export default async function CompliancePage({
 
       <ComplianceWorkspace
         auditEvents={documents.auditEvents}
+        buildingId={building.id}
         documents={documents.documents.map((document) => ({
           id: document.id,
           documentType: document.documentType,

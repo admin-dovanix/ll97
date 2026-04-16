@@ -76,10 +76,10 @@ export default async function BuildingOverviewPage({
       kpis={
         <KPIStrip
           items={[
-            { label: "Penalty exposure", value: formatCurrency(penalty), emphasize: true },
-            { label: "Readiness", value: readiness.shortLabel },
+            { label: "Penalty exposure", value: formatCurrency(penalty), tone: penalty > 0 ? "danger" : "default" },
+            { label: "Readiness", value: readiness.shortLabel, tone: readiness.tone === "success" ? "success" : readiness.tone === "accent" ? "accent" : "default" },
             { label: "Gross floor area", value: formatNumber(building.grossFloorArea ?? null) },
-            { label: "Active issues", value: monitoring.issues.length.toString() }
+            { label: "Active issues", value: monitoring.issues.length.toString(), tone: monitoring.issues.length > 0 ? "warning" : "default" }
           ]}
         />
       }
@@ -93,7 +93,7 @@ export default async function BuildingOverviewPage({
       />
 
       <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-lg border border-border bg-panel p-4 shadow-inset">
+        <div className="rounded-lg border border-border bg-panel p-5">
           <p className="eyebrow">Identity</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">
@@ -110,7 +110,7 @@ export default async function BuildingOverviewPage({
             </div>
           </div>
         </div>
-        <div className="rounded-lg border border-border bg-panel p-4 shadow-inset">
+        <div className="rounded-lg border border-border bg-panel p-5">
           <p className="eyebrow">Coverage</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <div className="rounded-md border border-border bg-panelAlt p-4 text-sm text-muted-foreground">

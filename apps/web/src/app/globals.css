@@ -90,7 +90,7 @@
   }
 
   .institutional-link {
-    @apply text-sm font-medium text-accent transition-colors hover:underline;
+    @apply text-sm font-medium transition-colors hover:underline;
   }
 
   .table-header {

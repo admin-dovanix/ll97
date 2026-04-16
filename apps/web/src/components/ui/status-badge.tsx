@@ -3,15 +3,15 @@ import { complianceStatusTone, type StatusTone } from "../../lib/status";
 import { cn } from "../../lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex min-h-7 items-center gap-2 rounded-sm border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.16em]",
+  "inline-flex min-h-7 items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] font-medium tracking-[0.04em]",
   {
     variants: {
       tone: {
-        success: "border-success/25 bg-success/12 text-success",
-        warning: "border-warning/30 bg-warning/14 text-warning",
-        danger: "border-danger/25 bg-danger/12 text-danger",
-        neutral: "border-border bg-panelAlt text-foreground/78",
-        accent: "border-accent/25 bg-accent/10 text-accent"
+        success: "border-success/18 bg-success/10 text-success",
+        warning: "border-warning/24 bg-warning/10 text-warning",
+        danger: "border-danger/22 bg-danger/9 text-danger",
+        neutral: "border-border bg-panelAlt text-foreground/72",
+        accent: "border-accent/18 bg-accent/8 text-accent"
       }
     },
     defaultVariants: {
@@ -19,13 +19,6 @@ const badgeVariants = cva(
     }
   }
 );
-
-const statusSymbols: Record<"non-compliant" | "at-risk" | "compliant" | "unknown", string> = {
-  "non-compliant": "R",
-  "at-risk": "Y",
-  compliant: "G",
-  unknown: "N"
-};
 
 export function StatusBadge({
   label,
@@ -50,7 +43,7 @@ export function StatusBadge({
 
   return (
     <span className={cn(badgeVariants({ tone: resolvedTone }))}>
-      {status ? <span className="text-[10px] opacity-70">{statusSymbols[status]}</span> : null}
+      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-70" />
       <span>{resolvedLabel}</span>
     </span>
   );

@@ -82,7 +82,7 @@ export function DataTable<T extends { id: string }>({
   }, [columns, data, sortState, sorting]);
 
   return (
-    <div className="overflow-hidden rounded-md border border-border bg-panelAlt">
+    <div className="overflow-hidden rounded-lg border border-border bg-panel">
       <div className="max-h-[34rem] overflow-auto">
         <table className="min-w-full border-separate border-spacing-0">
           <thead className="sticky top-0 z-10 bg-panel">
@@ -90,16 +90,16 @@ export function DataTable<T extends { id: string }>({
               {columns.map((column) => {
                 const isSorted = sortState?.columnId === column.id;
                 return (
-                    <th
+                  <th
                     key={column.id}
                     className={cn(
-                      "border-b border-border px-table-x py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-foreground/64",
+                      "border-b border-border px-6 py-3 text-[10px] font-normal uppercase tracking-[0.08em] text-foreground/52",
                       column.align === "right" ? "text-right" : column.align === "center" ? "text-center" : "text-left"
                     )}
                   >
                     {column.sortValue && sorting ? (
                       <button
-                        className="inline-flex min-h-11 items-center gap-2 rounded-sm text-inherit transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+                        className="inline-flex min-h-10 items-center gap-2 rounded-sm text-inherit transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                         type="button"
                         onClick={() =>
                           setSortState((current) =>
@@ -123,7 +123,7 @@ export function DataTable<T extends { id: string }>({
           <tbody>
             {sortedData.length === 0 ? (
               <tr>
-                <td className="px-table-x py-8 text-sm text-muted-foreground" colSpan={columns.length}>
+                <td className="px-6 py-8 text-sm text-muted-foreground" colSpan={columns.length}>
                   {emptyMessage}
                 </td>
               </tr>
@@ -134,7 +134,7 @@ export function DataTable<T extends { id: string }>({
                   className={cn(
                     "group border-b border-border/70",
                     onRowClick ? "cursor-pointer" : "",
-                    selectedRowId === row.id ? "bg-accent/10" : "hover:bg-muted/42"
+                    selectedRowId === row.id ? "bg-accent/6" : "hover:bg-muted/38"
                   )}
                   onClick={
                     onRowClick
@@ -167,7 +167,7 @@ export function DataTable<T extends { id: string }>({
                     <td
                       key={column.id}
                       className={cn(
-                        "border-b border-border/70 px-table-x py-3 align-top text-[0.96rem] text-foreground transition-colors",
+                        "border-b border-border/70 px-6 py-[18px] align-top text-[13px] text-foreground transition-colors",
                         column.align === "right" ? "text-right tabular-nums" : column.align === "center" ? "text-center" : "text-left",
                         column.className
                       )}

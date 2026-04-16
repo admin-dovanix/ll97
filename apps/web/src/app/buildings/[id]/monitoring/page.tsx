@@ -63,7 +63,7 @@ export default async function MonitoringPage({
       kpis={
         <KPIStrip
           items={[
-            { label: "Active issues", value: issues.length.toString(), emphasize: true },
+            { label: "Active issues", value: issues.length.toString(), tone: issues.length > 0 ? "warning" : "default" },
             { label: "Gateways", value: gateways.length.toString() },
             { label: "Discovered points", value: basPoints.length.toString() },
             { label: "Telemetry events", value: telemetryEvents.length.toString() }
